@@ -1,0 +1,3123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏸 Bonny 羽球隊 — 場次報名</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+<style>
+:root {
+  --bg:#FFFDF8; --bg2:#F9F7F3; --bg3:#F2EFE8;
+  --white:#FFFFFF; --primary:#FF9F68; --primary-h:#FF8F50; --primary-l:#FFE8D8;
+  --accent:#A8C3A0; --accent-l:#E5EFE3;
+  --text:#2F2F2F; --text2:#7A7A7A; --text3:#ABABAB;
+  --border:#E8E5DF; --success:#7AC77E; --warn:#FFC857; --danger:#E86A58;
+  --shadow:0 2px 8px rgba(0,0,0,0.06); --shadow-md:0 4px 16px rgba(0,0,0,0.08); --shadow-lg:0 8px 32px rgba(0,0,0,0.10);
+  --r:16px; --r-sm:10px; --r-pill:999px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:var(--bg2);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.page{display:none;padding:24px 20px;max-width:1120px;margin:0 auto;}
+.page.active{display:block;}
+@media(max-width:640px){.page{padding:16px 14px;}}
+.nav{background:var(--white);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:58px;position:sticky;top:0;z-index:200;box-shadow:0 1px 0 var(--border);gap:10px;}
+.nav-brand{font-size:1rem;font-weight:800;color:var(--primary);white-space:nowrap;letter-spacing:-.3px;}
+.nav-brand span{color:var(--text);}
+.nav-links{display:flex;gap:4px;align-items:center;flex-wrap:wrap;}
+.nb{background:none;border:1.5px solid var(--border);color:var(--text2);padding:5px 13px;border-radius:var(--r-pill);cursor:pointer;font-size:.79rem;font-weight:600;font-family:inherit;transition:all .25s ease;white-space:nowrap;}
+.nb:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-l);}
+.nb.act{background:var(--primary);border-color:var(--primary);color:var(--white);}
+.nb.ghost{border-color:transparent;color:var(--text2);}
+.nb.ghost:hover{background:var(--bg2);border-color:var(--border);color:var(--text);}
+.lt-btn{padding:4px 10px;border-radius:var(--r-pill);border:1.5px solid var(--border);background:none;color:var(--text2);font-size:.73rem;cursor:pointer;font-family:inherit;transition:all .2s;}
+.lt-btn.act{background:var(--primary);border-color:var(--primary);color:#fff;}
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:22px;margin-bottom:16px;box-shadow:var(--shadow);transition:box-shadow .3s ease,transform .3s ease;}
+.card:hover{box-shadow:var(--shadow-md);}
+.card-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:8px;}
+.card-title{font-size:1rem;font-weight:700;color:var(--text);letter-spacing:-.3px;}
+.ses-card{cursor:default;}
+.ses-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);}
+.badge{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:.69rem;font-weight:700;white-space:nowrap;}
+.b-open{background:#E6F9EA;color:#27A65A;border:1px solid #B8EBC3;}
+.b-closed{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.b-hidden{background:#FFF5E0;color:#C07800;border:1px solid #FFE08A;}
+.b-coach{background:#FFF0D9;color:#C07000;border:1px solid #FFD28A;}
+.b-warn{background:#FDECEC;color:#C0392B;border:1px solid #F5BCBC;}
+.b-confirmed{background:#E6F9EA;color:#27A65A;border:1px solid #B8EBC3;}
+.b-waitlist{background:#FFF5E0;color:#C07800;border:1px solid #FFE08A;}
+.b-custom{background:#F0EBFF;color:#7C3AED;border:1px solid #D5C5FF;}
+.b-promoted{background:#E8F4FF;color:#1565C0;border:1px solid #BBDEFB;}
+.b-cancelled{background:#F5F5F5;color:#888;border:1px solid #DDD;}
+.b-absent{background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:var(--r-pill);border:none;cursor:pointer;font-size:.84rem;font-weight:700;font-family:inherit;transition:all .25s ease;white-space:nowrap;}
+.btn-p{background:var(--primary);color:var(--white);}
+.btn-p:hover{background:var(--primary-h);transform:scale(1.02);box-shadow:0 4px 14px rgba(255,159,104,.35);}
+.btn-s{background:var(--bg2);color:var(--text);border:1px solid var(--border);}
+.btn-s:hover{background:var(--bg3);}
+.btn-ok{background:var(--success);color:var(--white);}
+.btn-ok:hover{background:#5DB564;transform:scale(1.02);}
+.btn-w{background:var(--warn);color:#6B4A00;}
+.btn-w:hover{background:#F5B800;}
+.btn-d{background:var(--danger);color:var(--white);}
+.btn-d:hover{background:#C85040;transform:scale(1.02);}
+.btn-ghost{background:transparent;border:1.5px solid var(--border);color:var(--text2);}
+.btn-ghost:hover{border-color:var(--text2);color:var(--text);}
+.btn-sm{padding:5px 12px;font-size:.74rem;font-weight:600;}
+.btn-outline-p{background:transparent;border:1.5px solid var(--primary);color:var(--primary);}
+.btn-outline-p:hover{background:var(--primary-l);}
+.fg{margin-bottom:14px;}
+.fl{display:block;font-size:.79rem;font-weight:600;color:var(--text2);margin-bottom:5px;}
+.fc{width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;color:var(--text);font-family:inherit;font-size:.87rem;outline:none;transition:border-color .25s ease,box-shadow .25s ease;}
+.fc:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(255,159,104,.12);}
+.fc::placeholder{color:var(--text3);}
+select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23ABABAB' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;}
+select.fc option{background:var(--white);color:var(--text);}
+textarea.fc{resize:vertical;min-height:76px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px;}
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr;}}
+.ses-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;}
+.sc-hd{background:linear-gradient(135deg,#FFF5EE 0%,#FFECE0 100%);border-bottom:1px solid var(--border);padding:16px 20px 12px;border-radius:var(--r) var(--r) 0 0;margin:-22px -22px 16px -22px;}
+.sc-title{font-size:.97rem;font-weight:800;color:var(--text);margin-bottom:2px;letter-spacing:-.2px;}
+.sc-date{font-size:.74rem;color:var(--text2);font-family:'Space Mono',monospace;}
+.sc-desc{font-size:.79rem;color:var(--text2);margin-top:8px;padding:8px 12px;background:var(--bg);border-radius:8px;border-left:3px solid var(--primary);line-height:1.5;white-space:pre-wrap;}
+.slot-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bg2);font-size:.84rem;}
+.slot-row:last-child{border-bottom:none;}
+.slot-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+.quota-bar{width:64px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;display:inline-block;}
+.qf{height:100%;border-radius:3px;transition:width .5s ease;}
+.qf.ok{background:var(--success);}
+.qf.mid{background:var(--warn);}
+.qf.full{background:var(--danger);}
+.mo{position:fixed;inset:0;background:rgba(47,47,47,.45);backdrop-filter:blur(4px);display:none;justify-content:center;align-items:flex-start;padding:40px 16px;z-index:1000;overflow-y:auto;}
+.mo.active{display:flex;}
+.modal{background:var(--white);border:1px solid var(--border);border-radius:20px;padding:28px;width:100%;max-width:580px;position:relative;box-shadow:var(--shadow-lg);animation:modalIn .25s ease;}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.modal-lg{max-width:720px;}
+.modal-sm{max-width:440px;}
+.modal-xl{max-width:880px;}
+.modal-title{font-size:1.15rem;font-weight:800;margin-bottom:18px;color:var(--text);letter-spacing:-.3px;}
+.mc{position:absolute;top:16px;right:16px;background:var(--bg2);border:none;color:var(--text2);width:30px;height:30px;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.mc:hover{background:var(--bg3);color:var(--text);}
+.mf{display:flex;gap:9px;justify-content:flex-end;margin-top:18px;}
+.tw{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:.82rem;}
+th{padding:10px 13px;text-align:left;border-bottom:2px solid var(--border);color:var(--text2);font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;background:var(--bg);}
+td{padding:9px 13px;border-bottom:1px solid var(--bg2);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--bg);}
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:22px;overflow-x:auto;}
+.tb{background:none;border:none;padding:10px 18px;cursor:pointer;font-size:.83rem;font-weight:600;font-family:inherit;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;white-space:nowrap;}
+.tb:hover{color:var(--primary);}
+.tb.act{color:var(--primary);border-bottom-color:var(--primary);}
+.sec-title{font-size:1.1rem;font-weight:800;margin-bottom:16px;letter-spacing:-.2px;}
+.fg-between{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.muted{color:var(--text2);font-size:.82rem;}
+.flex-gap{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.mt8{margin-top:8px}.mt14{margin-top:14px}.mt20{margin-top:20px}.mb8{margin-bottom:8px}.mb14{margin-bottom:14px}
+.divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.notice-box{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:10px;padding:12px 14px;font-size:.83rem;line-height:1.65;white-space:pre-wrap;color:var(--text2);}
+.al{padding:11px 14px;border-radius:10px;font-size:.82rem;margin-bottom:11px;}
+.al-d{background:#FDECEC;border:1px solid #F5BCBC;color:#C0392B;}
+.al-s{background:#E6F9EA;border:1px solid #B8EBC3;color:#27A65A;}
+.al-i{background:var(--primary-l);border:1px solid #FFD0B0;color:#9B4A00;}
+.stat-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 18px;}
+.stat-lbl{font-size:.73rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px;}
+.stat-val{font-size:1.7rem;font-weight:800;font-family:'Space Mono',monospace;color:var(--text);}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:18px;}
+.warn-tag{display:inline-block;padding:2px 7px;background:#FDECEC;border:1px solid #F5BCBC;border-radius:4px;font-size:.68rem;color:var(--danger);font-weight:700;}
+.spinner{display:inline-block;width:20px;height:20px;border:2.5px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading{display:flex;justify-content:center;align-items:center;padding:48px;gap:10px;color:var(--text2);font-size:.85rem;}
+#toast-c{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:7px;}
+.toast{padding:11px 18px;border-radius:10px;font-size:.83rem;font-weight:600;animation:tIn .3s ease;max-width:300px;box-shadow:var(--shadow-md);}
+.t-ok{background:var(--success);color:var(--white);}
+.t-err{background:var(--danger);color:var(--white);}
+.t-i{background:var(--text);color:var(--white);}
+@keyframes tIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+#login-pg{display:flex;min-height:100vh;align-items:center;justify-content:center;background:var(--bg);}
+.login-box{background:var(--white);border:1px solid var(--border);border-radius:24px;padding:40px;width:100%;max-width:380px;box-shadow:var(--shadow-lg);}
+.login-logo{font-size:2.4rem;margin-bottom:8px;}
+.rsb{display:block;width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-family:inherit;font-size:.85rem;cursor:pointer;text-align:left;transition:all .25s ease;margin-bottom:7px;}
+.rsb:hover:not(:disabled){border-color:var(--primary);background:var(--primary-l);}
+.rsb.sel{border-color:var(--primary);background:var(--primary-l);box-shadow:0 0 0 2px rgba(255,159,104,.2);}
+.rsb:disabled{opacity:.5;cursor:not-allowed;}
+.rsb-full{border-color:var(--warn)!important;}
+.rsb-full:hover:not(:disabled){background:#FFFBEC;border-color:var(--warn);}
+.slot-build-row{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:9px;}
+.slot-row-grid{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px;}
+@media(max-width:640px){.slot-row-grid{grid-template-columns:1fr 1fr;}}
+.rm-btn{background:none;border:none;color:var(--danger);cursor:pointer;padding:5px 8px;border-radius:8px;font-size:1rem;transition:all .2s;}
+.rm-btn:hover{background:#FDECEC;}
+.welcome-band{background:linear-gradient(135deg,#FFF5EE 0%,#FFF0E6 100%);border:1px solid #FFD9C0;border-radius:20px;padding:28px 24px;margin-bottom:24px;}
+.welcome-title{font-size:1.8rem;font-weight:900;color:var(--text);margin-bottom:4px;letter-spacing:-.5px;}
+.welcome-sub{font-size:.9rem;color:var(--text2);}
+.roster-summary{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 16px;margin-bottom:13px;font-size:.82rem;display:flex;gap:16px;flex-wrap:wrap;align-items:center;}
+.rs-num{font-weight:800;font-size:.95rem;font-family:'Space Mono',monospace;}
+.person-row{background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:9px;}
+.person-row-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-weight:700;font-size:.85rem;}
+.ses-filter{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+.sf-btn{padding:5px 15px;border-radius:var(--r-pill);border:1.5px solid var(--border);background:var(--white);color:var(--text2);cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit;transition:all .2s;}
+.sf-btn:hover{border-color:var(--primary);color:var(--primary);}
+.sf-btn.act{background:var(--primary);border-color:var(--primary);color:var(--white);}
+.buddy-card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;box-shadow:var(--shadow);transition:all .2s;}
+.buddy-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.steps{display:flex;gap:0;margin-bottom:24px;}
+.step{flex:1;text-align:center;font-size:.73rem;font-weight:700;color:var(--text3);position:relative;padding:0 4px;}
+.step::before{content:'';display:block;width:28px;height:28px;border-radius:50%;background:var(--bg3);border:2px solid var(--border);margin:0 auto 5px;font-size:.8rem;font-weight:800;line-height:24px;}
+.step.done::before{background:var(--success);border-color:var(--success);color:var(--white);content:'✓';}
+.step.active::before{background:var(--primary);border-color:var(--primary);color:var(--white);}
+.step.active{color:var(--primary);}
+.step.done{color:var(--success);}
+.step:not(:last-child)::after{content:'';position:absolute;top:14px;left:calc(50% + 14px);right:calc(-50% + 14px);height:2px;background:var(--border);}
+.step.done:not(:last-child)::after{background:var(--success);}
+.local-banner{background:#FFFBEC;border:2px solid var(--warn);border-radius:14px;padding:16px 20px;margin:16px 20px;font-size:.85rem;}
+.local-banner strong{color:#7A4A00;}
+.search-row{display:flex;gap:9px;margin-bottom:16px;}
+.search-row .fc{flex:1;}
+.promo-textarea{width:100%;min-height:320px;font-family:'Space Mono',monospace;font-size:.82rem;line-height:1.7;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:16px;color:var(--text);resize:vertical;outline:none;}
+.promo-textarea:focus{border-color:var(--primary);}
+.promo-block{border:1.5px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px;}
+.promo-block-hd{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:.78rem;font-weight:700;color:var(--text2);}
+.promo-block-locked-body{padding:10px 14px;font-family:'Space Mono',monospace;font-size:.82rem;line-height:1.7;background:var(--bg2);white-space:pre-wrap;color:var(--text2);}
+.promo-block textarea{width:100%;border:none;outline:none;background:var(--white);font-family:'Space Mono',monospace;font-size:.82rem;line-height:1.7;padding:10px 14px;resize:vertical;color:var(--text);min-height:60px;display:block;}
+.promo-block textarea:focus{background:var(--primary-l);}
+.promo-var-hint{font-size:.74rem;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-top:6px;line-height:1.9;}
+.reset-countdown{font-family:'Space Mono',monospace;font-size:2rem;font-weight:800;color:var(--danger);text-align:center;margin:16px 0 4px;}
+.reset-confirm-box{background:#FDECEC;border:2px solid var(--danger);border-radius:14px;padding:20px;text-align:center;}
+/* ── LINE Login ── */
+.line-login-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px 20px;background:#06C755;border:none;border-radius:var(--r-pill);color:#fff;font-size:.95rem;font-weight:700;font-family:inherit;cursor:pointer;transition:all .25s ease;}
+.line-login-btn:hover{background:#05b04c;transform:scale(1.02);box-shadow:0 4px 16px rgba(6,199,85,.35);}
+.line-login-btn svg{flex-shrink:0;}
+/* ── LINE login gate (overlay on register click) ── */
+#line-gate{position:fixed;inset:0;background:rgba(47,47,47,.55);backdrop-filter:blur(5px);display:none;justify-content:center;align-items:center;padding:24px;z-index:2000;}
+#line-gate.active{display:flex;}
+.line-gate-box{background:var(--white);border-radius:24px;padding:36px 32px;width:100%;max-width:360px;text-align:center;box-shadow:var(--shadow-lg);animation:modalIn .25s ease;}
+.line-gate-icon{font-size:2.6rem;margin-bottom:10px;}
+.line-gate-title{font-size:1.2rem;font-weight:800;margin-bottom:6px;}
+.line-gate-sub{font-size:.84rem;color:var(--text2);margin-bottom:24px;line-height:1.6;}
+/* ── Profile badge in nav ── */
+.nav-profile{display:flex;align-items:center;gap:7px;padding:4px 12px 4px 6px;border-radius:var(--r-pill);border:1.5px solid var(--border);cursor:pointer;transition:all .2s;background:var(--white);}
+.nav-profile:hover{border-color:var(--primary);background:var(--primary-l);}
+.nav-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;background:var(--bg3);}
+.nav-avatar-placeholder{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-h));display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;color:#fff;}
+.nav-nickname{font-size:.78rem;font-weight:700;color:var(--text);max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* ── Profile page ── */
+.profile-avatar-lg{width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--bg3);margin:0 auto 12px;}
+.profile-avatar-lg-placeholder{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-h));display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:800;color:#fff;margin:0 auto 12px;}
+/* ── Level select pills ── */
+.level-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-top:4px;}
+.level-pill{padding:6px 4px;border-radius:8px;border:1.5px solid var(--border);background:var(--white);color:var(--text2);cursor:pointer;font-size:.74rem;font-weight:600;font-family:inherit;text-align:center;transition:all .15s;}
+.level-pill:hover{border-color:var(--primary);color:var(--primary);}
+.level-pill.sel{background:var(--primary);border-color:var(--primary);color:#fff;}
+@media(max-width:640px){.level-grid{grid-template-columns:repeat(6,1fr);}}
+.ses-check-wrap{display:flex;align-items:flex-start;gap:10px;}
+.ses-check-wrap input[type=checkbox]{width:18px;height:18px;margin-top:3px;accent-color:var(--primary);flex-shrink:0;cursor:pointer;}
+.ses-promo-bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+.vmpills{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+.vmp{padding:5px 13px;border-radius:var(--r-pill);border:1.5px solid var(--border);background:var(--white);color:var(--text2);cursor:pointer;font-size:.77rem;font-weight:600;font-family:inherit;transition:all .2s;}
+.vmp:hover{border-color:var(--text2);color:var(--text);}
+.perm-grid{display:grid;grid-template-columns:1fr auto auto auto;gap:6px 14px;align-items:center;margin-top:8px;}
+.perm-label{font-size:.83rem;font-weight:600;}
+.perm-radio-group{display:flex;gap:6px;}
+.perm-radio-group label{display:flex;align-items:center;gap:3px;font-size:.75rem;cursor:pointer;padding:3px 8px;border-radius:var(--r-pill);border:1px solid var(--border);transition:all .15s;}
+.perm-radio-group input[type=radio]{accent-color:var(--primary);}
+.perm-radio-group label:has(input:checked){background:var(--primary-l);border-color:var(--primary);color:var(--primary);font-weight:700;}
+/* ── Mobile bottom nav ── */
+.mob-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-top:1px solid var(--border);z-index:200;height:56px;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
+.mob-nav-inner{display:flex;height:100%;}
+.mnb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--text3);font-size:.65rem;font-weight:600;font-family:inherit;transition:color .2s;padding:4px 0;}
+.mnb .mni{font-size:1.3rem;line-height:1;}
+.mnb.act{color:var(--primary);}
+.mnb:hover{color:var(--primary);}
+@media(max-width:640px){
+  .mob-nav{display:block;}
+  body{padding-bottom:56px;}
+  .nav{height:50px;padding:0 14px;}
+  .nav-brand{font-size:.9rem;}
+  .nav-links{display:none!important;}
+  .page{padding:14px 12px;}
+  .modal{padding:20px 16px;border-radius:16px;}
+  .mo{padding:16px 10px 70px;}
+  .btn{padding:9px 16px;font-size:.82rem;}
+  .welcome-band{padding:18px 16px;margin-bottom:16px;}
+  .welcome-title{font-size:1.4rem;}
+  .card{padding:16px;}
+  .sc-hd{margin:-16px -16px 14px -16px;padding:14px 16px 10px;}
+  .ses-grid{grid-template-columns:1fr;}
+  .tabs{gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .tb{padding:9px 14px;font-size:.78rem;}
+  .dash-grid{grid-template-columns:repeat(3,1fr);}
+  .stat-val{font-size:1.3rem;}
+  .login-box{padding:28px 20px;border-radius:20px;}
+}
+</style>
+</head>
+<body>
+<div id="toast-c"></div>
+<div id="local-banner" style="display:none"></div>
+
+<!-- LOGIN -->
+<div id="login-pg" style="display:none">
+  <div class="login-box">
+    <div class="login-logo">🏸</div>
+    <div id="login-title" style="font-size:1.3rem;font-weight:800;margin-bottom:2px;letter-spacing:-.3px">Bonny 羽球隊</div>
+    <div style="color:var(--text2);font-size:.85rem;margin-bottom:26px">後台管理登入</div>
+    <div class="fg"><label class="fl">帳號</label><input id="l-user" class="fc" placeholder="輸入帳號"></div>
+    <div class="fg"><label class="fl">密碼</label><input id="l-pw" class="fc" type="password" placeholder="輸入密碼" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div id="l-err" class="al al-d" style="display:none"></div>
+    <button class="btn btn-p" style="width:100%;justify-content:center" onclick="doLogin()">登入</button>
+    <div style="text-align:center;margin-top:14px"><a href="#" onclick="backToMain()" style="color:var(--text2);font-size:.81rem">← 返回報名頁面</a></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <nav class="nav">
+    <div class="nav-brand" id="nav-brand">🏸 <span>Bonny 羽球隊</span></div>
+    <div class="nav-links">
+      <button class="nb act" id="nav-pub" onclick="showPage('pub')" data-zh="場次報名" data-en="Sessions">場次報名</button>
+      <button class="nb" id="nav-myregs" onclick="showPage('myregs')" data-zh="我的報名" data-en="My Bookings" style="display:none">我的報名</button>
+      <button class="nb" id="nav-adm" onclick="showPage('adm')" style="display:none">後台管理</button>
+      <!-- LINE 用戶個人資料 -->
+      <div id="nav-line-profile" style="display:none" class="nav-profile" onclick="showPage('profile')" title="個人資料">
+        <div id="nav-avatar-wrap"></div>
+        <span class="nav-nickname" id="nav-nickname"></span>
+      </div>
+      <!-- LINE 登入按鈕（未登入時） -->
+      <button class="nb ghost" id="nav-line-login" onclick="startLineLogin()" style="display:none">
+        <span style="color:#06C755;font-weight:800">LINE</span> 登入
+      </button>
+      <!-- 管理員按鈕 -->
+      <button class="nb ghost" id="nav-login" onclick="goLogin()">管理員</button>
+      <button class="nb ghost" id="nav-out" style="display:none" onclick="doLogout()">登出</button>
+      <div style="display:flex;gap:3px">
+        <button class="lt-btn act" id="lt-zh" onclick="setLang('zh')">中文</button>
+        <button class="lt-btn" id="lt-en" onclick="setLang('en')">EN</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- PUBLIC PAGE -->
+  <div id="page-pub" class="page active">
+    <div style="max-width:860px;margin:0 auto">
+      <div class="welcome-band">
+        <div class="welcome-title" id="pub-title">🏸 Bonny 羽球隊</div>
+        <div class="welcome-sub" id="pub-welcome">點選場次即可報名，報名後如需取消請聯絡管理員</div>
+      </div>
+      <div id="pub-list"><div class="loading"><div class="spinner"></div><span>載入場次中...</span></div></div>
+    </div>
+  </div>
+
+  <!-- MY REGS PAGE -->
+  <div id="page-myregs" class="page">
+    <h2 class="sec-title" id="myregs-title">我的報名紀錄</h2>
+    <div id="myregs-result"></div>
+  </div>
+
+  <!-- PROFILE PAGE -->
+  <div id="page-profile" class="page">
+    <div style="max-width:560px;margin:0 auto">
+      <div class="card" style="text-align:center;padding:28px">
+        <div id="profile-avatar-area"></div>
+        <div id="profile-line-name" style="font-size:.82rem;color:var(--text2);margin-bottom:4px"></div>
+        <div id="profile-nickname" style="font-size:1.2rem;font-weight:800;margin-bottom:16px"></div>
+        <button class="btn btn-d btn-sm" onclick="doLineLogout()">登出 LINE</button>
+      </div>
+      <div class="card">
+        <div class="card-title mb14">個人資料設定</div>
+        <div class="fg"><label class="fl">稱呼 ／ 暱稱 *</label><input id="pf-nickname" class="fc" placeholder="希望如何被稱呼"></div>
+        <div class="fg"><label class="fl">電話（選填）</label><input id="pf-phone" class="fc" type="tel" placeholder="09XX-XXX-XXX" maxlength="10"></div>
+        <div class="fg">
+          <label class="fl">程度（選填）</label>
+          <div class="level-grid" id="pf-level-grid"></div>
+        </div>
+        <div class="fg"><label class="fl">報名來源（選填）</label>
+          <select id="pf-source" class="fc" onchange="onPfSourceChange()">
+            <option value="">不填</option>
+            <option value="LINE群組">LINE 群組</option>
+            <option value="LINE社群">LINE 社群</option>
+            <option value="官方LINE">官方 LINE</option>
+            <option value="Facebook">Facebook</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="fg" id="pf-source-other-wrap" style="display:none"><label class="fl">來源說明</label><input id="pf-source-other" class="fc"></div>
+        <button class="btn btn-p" onclick="saveProfile()">儲存個人資料</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN PAGE -->
+  <div id="page-adm" class="page">
+    <div class="tabs" id="adm-tabs">
+      <button class="tb act" id="t-sessions" onclick="switchTab('sessions',this)">場次管理</button>
+      <button class="tb" id="t-regs" onclick="switchTab('regs',this)">報名名單</button>
+      <button class="tb" id="t-hist" onclick="switchTab('hist',this)">歷史紀錄</button>
+      <button class="tb" id="t-buddies" onclick="switchTab('buddies',this)">👥 球友名單</button>
+      <button class="tb" id="t-settings" onclick="switchTab('settings',this)" style="display:none">系統設定</button>
+      <button class="tb" id="t-accounts" onclick="switchTab('accounts',this)" style="display:none">帳號管理</button>
+    </div>
+
+    <!-- SESSIONS TAB -->
+    <div id="tab-sessions">
+      <div class="fg-between mb14">
+        <h2 class="sec-title" style="margin:0">場次管理</h2>
+        <div class="flex-gap">
+          <div class="ses-filter">
+            <button class="sf-btn act" id="sf-ongoing" onclick="setSesFilter('ongoing',this)">進行中</button>
+            <button class="sf-btn" id="sf-ended" onclick="setSesFilter('ended',this)">已結束</button>
+            <button class="sf-btn" id="sf-all" onclick="setSesFilter('all',this)">全部</button>
+          </div>
+          <button class="btn btn-p btn-sm" id="btn-new-ses" onclick="openNewSes()" style="display:none">+ 新增場次</button>
+        </div>
+      </div>
+      <div class="ses-promo-bar" id="promo-bar" style="display:none">
+        <span style="font-size:.82rem;color:var(--text2)">已勾選 <strong id="promo-count">0</strong> 個場次</span>
+        <button class="btn btn-outline-p btn-sm" onclick="openPromoModal()">📣 產出宣傳文案</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearPromoSelect()">取消全選</button>
+      </div>
+      <div id="adm-ses-list"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- REGS TAB -->
+    <div id="tab-regs" style="display:none">
+      <h2 class="sec-title">報名名單</h2>
+      <div class="fg" style="max-width:380px"><label class="fl">選擇場次</label>
+        <select id="sel-ses" class="fc" onchange="loadRegList()"><option value="">請選擇場次</option></select>
+      </div>
+      <div id="reg-list-area"></div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div id="tab-hist" style="display:none">
+      <div class="fg-between mb14">
+        <h2 class="sec-title" style="margin:0">歷史紀錄</h2>
+        <button class="btn btn-s btn-sm" onclick="exportCSV()">📥 匯出 Excel</button>
+      </div>
+      <div class="g2 mb14">
+        <div class="fg" style="margin:0"><label class="fl">起始日期</label><input type="date" id="h-from" class="fc" onchange="loadHist()"></div>
+        <div class="fg" style="margin:0"><label class="fl">結束日期</label><input type="date" id="h-to" class="fc" onchange="loadHist()"></div>
+      </div>
+      <div id="hist-list"></div>
+    </div>
+
+    <!-- BUDDIES TAB -->
+    <div id="tab-buddies" style="display:none">
+      <div class="fg-between mb14">
+        <h2 class="sec-title" style="margin:0">👥 球友名單</h2>
+      </div>
+      <div class="flex-gap mb14">
+        <input id="buddy-search" class="fc" style="max-width:240px" placeholder="搜尋姓名或電話" oninput="filterBuddies()">
+        <div class="ses-filter" style="margin:0">
+          <button class="sf-btn act" onclick="setBuddyFilter('normal',this)">一般</button>
+          <button class="sf-btn" onclick="setBuddyFilter('warned',this)">⚠️ 警示中</button>
+        </div>
+      </div>
+      <div id="buddies-list"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div id="tab-settings" style="display:none">
+      <h2 class="sec-title">系統設定</h2>
+      <!-- 無設定權限時的說明（只能改密碼）-->
+      <div id="s-no-perm-hint" class="al al-i mb14" style="display:none">
+        您目前沒有系統設定的瀏覽權限，僅可修改自己的登入密碼。如需調整其他設定，請聯絡主管理員。
+      </div>
+
+      <!-- 網站 Title (has-fee OR super_admin) -->
+      <div class="card mb14" id="s-block-title">
+        <div class="card-title mb14">🏷️ 網站名稱設定</div>
+        <div class="fg"><label class="fl">網站名稱（顯示於導覽列與瀏覽器標題）</label><input id="s-site-title" class="fc" placeholder="🏸 Bonny 羽球隊"></div>
+        <button class="btn btn-p btn-sm" onclick="saveSiteTitle()">儲存名稱</button>
+        <div class="divider" style="margin:16px 0"></div>
+        <div class="card-title mb8">🔑 LIFF 設定（LINE 登入）</div>
+        <p class="muted mb8" style="font-size:.8rem;line-height:1.7">需先至 <a href="https://developers.line.biz" target="_blank" style="color:var(--primary)">LINE Developers</a> 建立 LIFF App，將 Endpoint URL 設為本站網址，再把 LIFF ID 填入下方。</p>
+        <div class="fg"><label class="fl">LIFF ID</label><input id="s-liff-id" class="fc" placeholder="1234567890-xxxxxxxx"></div>
+        <button class="btn btn-p btn-sm" onclick="saveLiffId()">儲存 LIFF ID</button>
+        <div class="divider" style="margin:16px 0"></div>
+        <div class="card-title mb8">📣 Make Webhook 報名通知</div>
+        <p class="muted mb8" style="font-size:.8rem;line-height:1.7">
+          有新報名時，系統自動呼叫此 Webhook，由 Make 推播 LINE 通知到管理員群組。<br>
+          設定步驟：Make → 新增 Scenario → <strong>Custom Webhook</strong> 模組 → 複製 Webhook URL 貼入下方，後續接 <strong>HTTP → LINE Messaging API</strong> 模組即可。
+        </p>
+        <div class="fg">
+          <label class="fl">Make Webhook URL</label>
+          <input id="s-make-webhook" class="fc" placeholder="https://hook.eu2.make.com/xxxxxxxxxxxxxxxx">
+        </div>
+        <div class="flex-gap mt8">
+          <button class="btn btn-p btn-sm" onclick="saveWebhookSettings()">儲存設定</button>
+          <button class="btn btn-ghost btn-sm" onclick="testWebhook()">🧪 測試發送</button>
+        </div>
+        <div id="webhook-test-result" style="display:none;margin-top:10px" class="al al-i"></div>
+      </div>
+
+      <!-- 費用設定 (has-fee only) -->
+      <div id="s-block-fees">
+        <div class="g2">
+          <div class="card">
+            <div class="card-title mb14">費用預設</div>
+            <div class="fg"><label class="fl">零打預設費用（元）</label><input id="s-casual" class="fc" type="number" placeholder="230"></div>
+            <div class="fg"><label class="fl">教練場預設費用（元）</label><input id="s-coach" class="fc" type="number" placeholder="350"></div>
+            <button class="btn btn-p" onclick="saveSettings()">儲存</button>
+          </div>
+          <div class="card">
+            <div class="card-title mb14">前台歡迎訊息</div>
+            <div class="fg"><label class="fl">中文</label><textarea id="s-wel-zh" class="fc" rows="2"></textarea></div>
+            <div class="fg"><label class="fl">English</label><textarea id="s-wel-en" class="fc" rows="2"></textarea></div>
+            <button class="btn btn-p" onclick="saveSettings()">儲存</button>
+          </div>
+        </div>
+        <div class="card mt14">
+          <div class="card-title mb14">報名通知訊息（8 組）</div>
+          <p class="muted mb14">支援變數：[姓名] [日期] [時段] [金額] [備取順序]</p>
+          <div class="g2">
+            <div><div style="font-weight:700;font-size:.83rem;margin-bottom:8px;color:var(--success)">🏸 零打 — 報名成功</div>
+              <div class="fg"><label class="fl">中文</label><textarea id="notif-oczh" class="fc" rows="3"></textarea></div>
+              <div class="fg"><label class="fl">English</label><textarea id="notif-ocen" class="fc" rows="3"></textarea></div></div>
+            <div><div style="font-weight:700;font-size:.83rem;margin-bottom:8px;color:var(--warn)">🏸 零打 — 備取通知</div>
+              <div class="fg"><label class="fl">中文</label><textarea id="notif-owzh" class="fc" rows="3"></textarea></div>
+              <div class="fg"><label class="fl">English</label><textarea id="notif-owen" class="fc" rows="3"></textarea></div></div>
+            <div><div style="font-weight:700;font-size:.83rem;margin-bottom:8px;color:var(--success)">🎯 教練課 — 報名成功</div>
+              <div class="fg"><label class="fl">中文</label><textarea id="notif-cczh" class="fc" rows="3"></textarea></div>
+              <div class="fg"><label class="fl">English</label><textarea id="notif-ccen" class="fc" rows="3"></textarea></div></div>
+            <div><div style="font-weight:700;font-size:.83rem;margin-bottom:8px;color:var(--warn)">🎯 教練課 — 備取通知</div>
+              <div class="fg"><label class="fl">中文</label><textarea id="notif-cwzh" class="fc" rows="3"></textarea></div>
+              <div class="fg"><label class="fl">English</label><textarea id="notif-cwen" class="fc" rows="3"></textarea></div></div>
+          </div>
+          <button class="btn btn-p mt14" onclick="saveSettings()">儲存通知訊息</button>
+        </div>
+
+        <!-- 宣傳文案範本設定 -->
+        <div class="card mt14" id="s-block-promo">
+          <div class="card-title mb8">📣 宣傳文案範本設定</div>
+          <p class="muted mb14">設定宣傳文案的固定區塊內容。產生文案時，<strong>場次資料（日期、地點、時段、費用、名額）</strong>會自動鎖定，只有「自訂備註」和「固定結尾」可在產生後編輯。</p>
+
+          <!-- 單場次範本 -->
+          <div style="font-weight:700;font-size:.9rem;margin-bottom:10px;color:var(--primary)">🗓️ 單場次文案</div>
+          <div class="fg"><label class="fl">統計說明行（顯示於費用下方，可留空）</label>
+            <input id="s-promo-single-stat" class="fc" placeholder="例：統計人數&#10;請依序可以報名的時段+幾人(跟名稱)"></div>
+          <div class="fg"><label class="fl">全域固定備註（每次產生都附加，例如付款說明）</label>
+            <textarea id="s-promo-single-footer" class="fc" rows="3" placeholder="例：📌報名成功後，若臨時有事，請於「一天前」告知感謝配合 🙏"></textarea></div>
+
+          <div class="divider"></div>
+
+          <!-- 多場次範本 -->
+          <div style="font-weight:700;font-size:.9rem;margin-bottom:10px;color:var(--primary)">📅 多場次文案</div>
+          <div class="fg"><label class="fl">標題列</label>
+            <input id="s-promo-multi-header" class="fc" placeholder="例：✨本週零打資訊更新 ✨"></div>
+          <div class="fg"><label class="fl">全域固定結尾</label>
+            <textarea id="s-promo-multi-footer" class="fc" rows="3" placeholder="例：📌有興趣的朋友歡迎加入 🙏"></textarea></div>
+
+          <button class="btn btn-p btn-sm mt8" onclick="savePromoSettings()">儲存文案範本</button>
+        </div>
+      </div>
+
+      <!-- 修改密碼 (all) -->
+      <div class="card mt14" id="s-block-pw">
+        <div class="card-title mb14">修改我的密碼</div>
+        <div class="g2">
+          <div class="fg"><label class="fl">新密碼</label><input id="s-newpw" class="fc" type="password"></div>
+          <div class="fg"><label class="fl">確認新密碼</label><input id="s-cfpw" class="fc" type="password"></div>
+        </div>
+        <button class="btn btn-s" onclick="changePw()">更改密碼</button>
+      </div>
+
+      <!-- 系統重置 (super_admin ONLY) -->
+      <div class="card mt14" id="s-block-reset" style="display:none;border-color:#F5BCBC;">
+        <div class="card-title mb8" style="color:var(--danger)">⚠️ 危險區域</div>
+        <p class="muted mb14">以下操作不可逆，請謹慎操作。</p>
+        <button class="btn btn-d" onclick="openResetConfirm()" style="background:var(--danger)">🗑️ 系統重置 — 清除全部資料</button>
+        <p class="muted mt8" style="font-size:.76rem">將清除所有場次、報名紀錄、球友名單、警示名單。系統設定與帳號資料保留。</p>
+      </div>
+    </div>
+
+    <!-- ACCOUNTS TAB -->
+    <div id="tab-accounts" style="display:none">
+      <div class="fg-between mb14">
+        <h2 class="sec-title" style="margin:0">帳號管理</h2>
+        <button class="btn btn-p btn-sm" onclick="openNewAcc()">+ 新增帳號</button>
+      </div>
+      <div id="acc-list"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div><!-- /page-adm -->
+</div><!-- /app -->
+
+<!-- MOBILE BOTTOM NAV -->
+<nav class="mob-nav" id="mob-nav">
+  <div class="mob-nav-inner">
+    <button class="mnb act" id="mnb-pub" onclick="showPage('pub')"><span class="mni">🏸</span>場次報名</button>
+    <button class="mnb" id="mnb-myregs" onclick="showPage('myregs')" style="display:none"><span class="mni">📋</span>我的報名</button>
+    <button class="mnb" id="mnb-profile" onclick="showPage('profile')" style="display:none"><span class="mni">👤</span>個人資料</button>
+    <button class="mnb" id="mnb-line-login" onclick="startLineLogin()"><span class="mni" style="color:#06C755">●</span>LINE登入</button>
+    <button class="mnb" id="mnb-adm" onclick="showPage('adm')" style="display:none"><span class="mni">⚙️</span>後台管理</button>
+    <button class="mnb" id="mnb-login" onclick="goLogin()"><span class="mni">🔑</span>管理員</button>
+    <button class="mnb" id="mnb-out" style="display:none" onclick="doLogout()"><span class="mni">🚪</span>登出</button>
+  </div>
+</nav>
+
+<!-- ══════════ MODALS ══════════ -->
+
+<!-- SESSION MODAL -->
+<div id="mo-ses" class="mo">
+  <div class="modal modal-lg">
+    <button class="mc" onclick="cm('mo-ses')">✕</button>
+    <div class="modal-title" id="mo-ses-title">新增場次</div>
+    <div class="g2">
+      <div class="fg"><label class="fl">場次日期</label><input id="sm-date" type="date" class="fc"></div>
+      <div class="fg"><label class="fl">場次類型</label>
+        <select id="sm-type" class="fc" onchange="onSesTypeChange()">
+          <option value="casual">零打</option>
+          <option value="coach">教練場</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg"><label class="fl">場次名稱（選填）</label><input id="sm-name" class="fc" placeholder="留空自動產生"></div>
+    <div class="fg"><label class="fl">地點（選填）</label><input id="sm-loc" class="fc" placeholder="例：民生體育館 B區"></div>
+    <div class="g2">
+      <div class="fg"><label class="fl">場地數（每面 8 名額）</label><input id="sm-courts" type="number" class="fc" value="1" min="1"></div>
+      <div class="fg"><label class="fl">顯示狀態</label>
+        <select id="sm-visible" class="fc">
+          <option value="open">開放報名</option>
+          <option value="hidden">隱藏（先設定）</option>
+          <option value="closed">關閉報名</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg"><label class="fl">場次說明（選填，顯示在報名頁卡片上）</label><textarea id="sm-desc" class="fc" rows="3" placeholder="例：本場次為初級友誼賽，場費已含場地費，請自備羽球"></textarea></div>
+    <div class="divider"></div>
+    <div class="fg"><label class="fl">時段模式</label>
+      <select id="sm-slot-mode" class="fc" onchange="onSlotModeChange()">
+        <option value="multi">分時段（A、B，可含跨段 C）</option>
+        <option value="single">不分時段（整場報名）</option>
+      </select>
+    </div>
+    <div id="sm-multi-wrap">
+      <div class="fg-between mb14">
+        <div style="font-weight:700;font-size:.88rem;color:var(--text)">時段設定</div>
+        <button class="btn btn-ghost btn-sm" onclick="addSlotRow()">+ 新增時段</button>
+      </div>
+      <div id="sm-slots-c"></div>
+      <div class="al al-i mt8" style="font-size:.78rem;line-height:1.7">
+        💡 <b>C 時段（A+B 合併）</b>：新增時段後勾選「合併時段」並勾選要合併的時段。
+      </div>
+    </div>
+    <div id="sm-single-wrap" style="display:none">
+      <div class="g2">
+        <div class="fg"><label class="fl">開始時間</label><input type="time" id="ss-start" class="fc" onchange="autoEndTime()"></div>
+        <div class="fg"><label class="fl">結束時間</label><input type="time" id="ss-end" class="fc"></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">報名費（元）</label><input type="number" id="ss-fee" class="fc" placeholder="230"></div>
+        <div class="fg"><label class="fl">名額設定</label>
+          <select id="ss-quota-mode" class="fc" onchange="document.getElementById('ss-quota-wrap').style.display=this.value==='manual'?'block':'none'">
+            <option value="auto">自動（依場地數 × 8）</option>
+            <option value="manual">手動設定</option>
+          </select>
+        </div>
+      </div>
+      <div id="ss-quota-wrap" style="display:none" class="fg"><label class="fl">開放名額（人）</label><input type="number" id="ss-quota" class="fc" placeholder="16"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-ses')">取消</button>
+      <button class="btn btn-p" onclick="saveSes()">儲存場次</button>
+    </div>
+  </div>
+</div>
+
+<!-- REGISTER MODAL -->
+<div id="mo-reg" class="mo">
+  <div class="modal modal-lg">
+    <button class="mc" onclick="cm('mo-reg')">✕</button>
+    <div class="modal-title" id="mo-reg-title">場次報名</div>
+    <div class="steps" id="reg-steps">
+      <div class="step active" data-n="1">選擇時段</div>
+      <div class="step" data-n="2">報名人員</div>
+      <div class="step" data-n="3">確認送出</div>
+    </div>
+    <div id="reg-step-content"></div>
+    <div class="mf" id="reg-step-btns"></div>
+  </div>
+</div>
+
+<!-- NOTICE MODAL -->
+<div id="mo-notice" class="mo">
+  <div class="modal modal-sm" style="text-align:center">
+    <div id="n-icon" style="font-size:2.4rem;margin-bottom:8px">✅</div>
+    <div id="n-status-title" style="font-size:1.1rem;font-weight:800;margin-bottom:4px"></div>
+    <div id="n-info" style="color:var(--text2);font-size:.84rem;margin-bottom:12px"></div>
+    <div id="n-msg" class="notice-box" style="text-align:left;display:none"></div>
+    <div id="n-warn" class="al al-d mt14" style="display:none">⚠️ 此姓名在警示名單中，請注意</div>
+    <div style="margin-top:18px"><button class="btn btn-p" style="width:100%;justify-content:center" onclick="cm('mo-notice')">了解，關閉</button></div>
+  </div>
+</div>
+
+<!-- PAYMENT MODAL -->
+<div id="mo-pay" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-pay')">✕</button>
+    <div class="modal-title">確認收款</div>
+    <div id="pay-info" style="color:var(--text2);font-size:.84rem;margin-bottom:14px"></div>
+    <div class="fg"><label class="fl">付款方式</label>
+      <select id="pay-method" class="fc" onchange="document.getElementById('pay-other-w').style.display=this.value==='other'?'block':'none'">
+        <option value="cash">現金</option><option value="linepay">Line Pay</option><option value="other">其他</option>
+      </select>
+    </div>
+    <div id="pay-other-w" class="fg" style="display:none"><label class="fl">自訂方式</label><input id="pay-other" class="fc" placeholder="轉帳、匯款..."></div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-pay')">取消</button>
+      <button class="btn btn-ok" onclick="confirmPay()">確認已收款</button>
+    </div>
+  </div>
+</div>
+
+<!-- WARNING MODAL -->
+<div id="mo-warn" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-warn')">✕</button>
+    <div class="modal-title">新增警示</div>
+    <div class="fg"><label class="fl">姓名</label><input id="w-name" class="fc"></div>
+    <div class="fg"><label class="fl">電話（選填）</label><input id="w-phone" class="fc" placeholder="09XX..."></div>
+    <div class="fg"><label class="fl">警示原因</label>
+      <select id="w-reason" class="fc"><option value="unpaid">未付款</option><option value="absent">缺席未通知</option><option value="late_cancel">未提前請假</option><option value="other">其他</option></select>
+    </div>
+    <div class="fg"><label class="fl">備註</label><textarea id="w-note" class="fc"></textarea></div>
+    <div class="fg"><label class="fl">關聯場次</label><input id="w-ses" class="fc" placeholder="場次名稱（選填）"></div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-warn')">取消</button>
+      <button class="btn btn-d" onclick="saveWarn()">新增警示</button>
+    </div>
+  </div>
+</div>
+
+<!-- ACCOUNT MODAL -->
+<div id="mo-acc" class="mo">
+  <div class="modal modal-lg">
+    <button class="mc" onclick="cm('mo-acc')">✕</button>
+    <div class="modal-title" id="mo-acc-title">新增帳號</div>
+    <div class="g2">
+      <div class="fg"><label class="fl">帳號</label><input id="a-user" class="fc"></div>
+      <div class="fg"><label class="fl" id="a-pw-label">密碼</label><input id="a-pw" class="fc" type="password" placeholder=""></div>
+    </div>
+    <div id="a-pw-hint" class="muted mb8" style="display:none;font-size:.78rem">✦ 留空表示不修改密碼</div>
+    <div class="fg"><label class="fl">層級</label>
+      <select id="a-role" class="fc" onchange="onRoleChange()">
+        <option value="admin">一般管理員</option>
+        <option value="sub_admin">副管理員</option>
+        <option value="super_admin">主管理員</option>
+      </select>
+    </div>
+    <div id="perm-section">
+      <div class="fl" style="margin-bottom:8px">各頁面權限設定</div>
+      <div style="font-size:.75rem;color:var(--text2);margin-bottom:10px">無權限：看不到此分頁　純瀏覽：只能看不能操作　可編輯：可以修改設定</div>
+      <div id="perm-rows"></div>
+    </div>
+    <div class="mf"><button class="btn btn-ghost" onclick="cm('mo-acc')">取消</button><button class="btn btn-p" id="mo-acc-save" onclick="saveAcc()">儲存</button></div>
+  </div>
+</div>
+
+<!-- HIST DETAIL MODAL -->
+<div id="mo-hist" class="mo">
+  <div class="modal modal-xl">
+    <button class="mc" onclick="cm('mo-hist')">✕</button>
+    <div class="modal-title" id="mo-hist-title">場次詳情</div>
+    <div id="mo-hist-dash" class="dash-grid mb14"></div>
+    <div id="mo-hist-body"></div>
+  </div>
+</div>
+
+<!-- CUSTOM ADD MODAL -->
+<div id="mo-custom" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-custom')">✕</button>
+    <div class="modal-title">⚙️ 新增客製人員</div>
+    <p class="muted mb14">客製人員不受名額限制，直接設為正選</p>
+    <div class="fg"><label class="fl">姓名 *</label><input id="cu-name" class="fc"></div>
+    <div class="fg"><label class="fl">電話</label><input id="cu-phone" class="fc" placeholder="09XX..."></div>
+    <div class="fg"><label class="fl">時段 *</label><select id="cu-slot" class="fc"></select></div>
+    <div class="fg"><label class="fl">報名金額</label><input id="cu-fee" class="fc" type="number"></div>
+    <div class="g2">
+      <div class="fg"><label class="fl">報名來源</label>
+        <select id="cu-source" class="fc" onchange="onCuSourceChange()">
+          <option value="">不填</option><option value="LINE群組">LINE 群組</option><option value="LINE社群">LINE 社群</option>
+          <option value="官方LINE">官方 LINE</option><option value="Facebook">Facebook</option><option value="other">其他（自填）</option>
+        </select>
+      </div>
+      <div class="fg"><label class="fl">程度</label><select id="cu-level" class="fc"><option value="">不填</option><option>初學</option><option>入門</option><option>初中級</option><option>中級</option><option>中高級</option><option>高級</option></select></div>
+    </div>
+    <div class="fg" id="cu-username-wrap" style="display:none"><label class="fl">用戶名稱（LINE/Facebook）</label><input id="cu-username" class="fc" placeholder="例：黃美麗"></div>
+    <div class="fg" id="cu-source-other-wrap" style="display:none"><label class="fl">來源說明</label><input id="cu-source-other" class="fc" placeholder="例：XX羽球社團"></div>
+    <div class="fg"><label class="fl">備註</label><textarea id="cu-note" class="fc" placeholder="現場臨時加入..."></textarea></div>
+    <div class="mf"><button class="btn btn-ghost" onclick="cm('mo-custom')">取消</button><button class="btn btn-p" onclick="saveCustom()">確認新增</button></div>
+  </div>
+</div>
+
+<!-- BUDDY DETAIL MODAL -->
+<div id="mo-buddy" class="mo">
+  <div class="modal modal-lg">
+    <button class="mc" onclick="cm('mo-buddy')">✕</button>
+    <div class="modal-title" id="mo-buddy-title">球友詳情</div>
+    <div id="mo-buddy-body"></div>
+  </div>
+</div>
+
+<!-- PROMO MODAL -->
+<div id="mo-promo" class="mo">
+  <div class="modal modal-xl">
+    <button class="mc" onclick="cm('mo-promo')">✕</button>
+    <div class="modal-title">📣 宣傳文案</div>
+    <div class="flex-gap mb14" style="font-size:.8rem;color:var(--text2)">
+      <span>🔒 灰色區塊為自動帶入資料（鎖定不可改）</span>
+      <span>✏️ 白色區塊可自由編輯</span>
+    </div>
+    <div id="promo-blocks"></div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-promo')">關閉</button>
+      <button class="btn btn-p" onclick="copyPromo()">📋 一鍵複製</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET CONFIRM MODAL -->
+<div id="mo-reset" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cancelReset()">✕</button>
+    <div class="modal-title" style="color:var(--danger)">⚠️ 系統重置確認</div>
+    <div class="reset-confirm-box">
+      <div style="font-size:1.1rem;font-weight:700;color:var(--danger);margin-bottom:8px">此操作將永久刪除：</div>
+      <div style="font-size:.85rem;color:var(--text);text-align:left;line-height:1.9">
+        ✗ 所有場次資料<br>
+        ✗ 所有報名紀錄<br>
+        ✗ 所有球友名單<br>
+        ✗ 所有警示名單
+      </div>
+      <div style="font-size:.82rem;color:var(--text2);margin-top:8px">帳號與系統設定將保留</div>
+      <div class="reset-countdown" id="reset-count">10</div>
+      <div style="font-size:.8rem;color:var(--text2)">秒後自動取消</div>
+    </div>
+    <div class="mf mt14">
+      <button class="btn btn-ghost" onclick="cancelReset()">取消</button>
+      <button class="btn btn-d" id="btn-confirm-reset" onclick="doSystemReset()" disabled>確定清除所有資料</button>
+    </div>
+  </div>
+</div>
+
+<!-- LINE LOGIN GATE (overlay when unauthenticated user clicks register) -->
+<div id="line-gate">
+  <div class="line-gate-box">
+    <div class="line-gate-icon">🏸</div>
+    <div class="line-gate-title">登入後即可報名</div>
+    <div class="line-gate-sub">使用 LINE 帳號登入，系統自動記錄您的報名紀錄，不需每次重新填寫資料。</div>
+    <button class="line-login-btn" onclick="startLineLogin()">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect width="22" height="22" rx="6" fill="#fff"/><path d="M11 4C7.134 4 4 6.79 4 10.22c0 2.983 2.65 5.478 6.23 5.952.243.052.574.16.658.367.075.187.049.479.024.668l-.106.635c-.032.19-.149.744.651.405.8-.338 4.318-2.543 5.89-4.354C18.46 12.65 19 11.497 19 10.22 19 6.79 15.866 4 11 4z" fill="#06C755"/></svg>
+      使用 LINE 登入
+    </button>
+    <button class="btn btn-ghost" style="width:100%;margin-top:10px;justify-content:center" onclick="closeLineGate()">先瀏覽場次</button>
+  </div>
+</div>
+
+<!-- FIRST-RUN PROFILE SETUP MODAL -->
+<div id="mo-firstrun" class="mo">
+  <div class="modal modal-sm">
+    <div class="modal-title">🎉 歡迎加入！請填寫基本資料</div>
+    <p class="muted mb14" style="line-height:1.65">首次使用請設定您的稱呼，方便管理員確認您的報名。其他欄位可之後再到「個人資料」補填。</p>
+    <div id="firstrun-avatar-area" style="text-align:center;margin-bottom:14px"></div>
+    <div class="fg"><label class="fl">稱呼 ／ 暱稱 *</label><input id="fr-nickname" class="fc" placeholder="例：小明、阿華"></div>
+    <div class="fg"><label class="fl">電話（選填，方便管理員聯絡）</label><input id="fr-phone" class="fc" type="tel" placeholder="09XX-XXX-XXX" maxlength="10"></div>
+    <div class="fg">
+      <label class="fl">程度（選填）</label>
+      <div class="level-grid" id="fr-level-grid"></div>
+    </div>
+    <div class="fg"><label class="fl">報名來源（選填，讓我們了解您如何找到我們）</label>
+      <select id="fr-source" class="fc" onchange="onFrSourceChange()">
+        <option value="">不填</option>
+        <option value="LINE群組">LINE 群組</option>
+        <option value="LINE社群">LINE 社群</option>
+        <option value="官方LINE">官方 LINE</option>
+        <option value="Facebook">Facebook</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
+    <div class="fg" id="fr-source-other-wrap" style="display:none"><label class="fl">來源說明</label><input id="fr-source-other" class="fc" placeholder="例：XX羽球社團"></div>
+    <div class="mf">
+      <button class="btn btn-p" style="width:100%;justify-content:center" onclick="saveFirstRun()">完成設定，開始報名 🏸</button>
+    </div>
+  </div>
+</div>
+<div id="mo-confirm" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-confirm')">✕</button>
+    <div class="modal-title" id="mo-confirm-title">確認操作</div>
+    <p class="muted mb14" id="mo-confirm-msg"></p>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-confirm')">取消</button>
+      <button class="btn btn-d" id="mo-confirm-ok">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- DEMOTE TO WAITLIST MODAL -->
+<div id="mo-demote" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-demote')">✕</button>
+    <div class="modal-title">放回備取名單</div>
+    <p class="muted mb14" id="demote-info"></p>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-demote')">取消</button>
+      <button class="btn btn-w" onclick="confirmDemote()">確認放回備取</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   LOCAL STORAGE (fallback)
+============================================================ */
+const LOCAL={
+  _store:{},
+  get(k){return JSON.parse(JSON.stringify(this._store[k]||null));},
+  set(k,v){this._store[k]=JSON.parse(JSON.stringify(v));return this._store[k];},
+  push(col,doc){if(!this._store[col])this._store[col]=[];const id='local_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);const d={...doc,id};this._store[col].push(d);return d;},
+  getAll(col){return(this._store[col]||[]).map(x=>({...x}));},
+  update(col,id,upd){const arr=this._store[col]||[];const i=arr.findIndex(x=>x.id===id);if(i>=0)arr[i]=Object.assign({},arr[i],upd);},
+  delete(col,id){this._store[col]=(this._store[col]||[]).filter(x=>x.id!==id);},
+  find(col,field,val){return(this._store[col]||[]).filter(x=>x[field]===val);},
+};
+
+function seedLocalData(){
+  LOCAL.set('admins',{admin:{role:'super_admin',permissions:{sessions:'edit',regs:'edit',hist:'edit',buddies:'edit',settings:'edit'},passwordHash:hashPw('admin1234')}});
+  LOCAL.set('settings',{global:{siteTitle:'🏸 Bonny 羽球隊',casualFee:230,coachFee:350,welcomeZh:'點選場次即可報名，登入 LINE 後即可開始報名',welcomeEn:'Login with LINE to register for sessions.',promoFooter:'📌報名成功後，若臨時有事，請於「一天前」告知感謝配合 🙏',liffId:'',makeWebhookUrl:''}});
+  const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  const d1=tomorrow.toISOString().split('T')[0];
+  const d2=new Date(+tomorrow+86400000).toISOString().split('T')[0];
+  LOCAL.push('sessions',{date:d1,type:'casual',name:'週六早上零打',location:'民生體育館 B區',status:'open',slotMode:'multi',courts:2,description:'本場次歡迎初中級以上球友，請自備球拍',slots:[
+    {id:'slot_0',name:'A時段',startTime:'08:00',endTime:'10:00',fee:230,quota:16,quotaOverride:0,combinedWith:[],registered:3},
+    {id:'slot_1',name:'B時段',startTime:'10:00',endTime:'12:00',fee:230,quota:16,quotaOverride:0,combinedWith:[],registered:5},
+    {id:'slot_2',name:'C時段（全場）',startTime:'08:00',endTime:'12:00',fee:400,quota:9999,quotaOverride:0,combinedWith:['slot_0','slot_1'],registered:2},
+  ],createdAt:Date.now()});
+  LOCAL.push('sessions',{date:d2,type:'coach',name:'週日教練場',location:'大安運動中心 3F',status:'open',slotMode:'multi',courts:1,description:'',slots:[
+    {id:'slot_0',name:'初級班',startTime:'09:00',endTime:'10:00',fee:350,quota:8,quotaOverride:0,combinedWith:[],registered:0},
+    {id:'slot_1',name:'進階班',startTime:'10:00',endTime:'11:00',fee:350,quota:8,quotaOverride:0,combinedWith:[],registered:1},
+  ],createdAt:Date.now()});
+  // seed a fake local LINE user for testing
+  LOCAL.push('buddies',{lineUserId:'LOCAL_TEST_USER',lineDisplayName:'測試球友',nickname:'小測',phone:'0912345678',level:8,contactSource:'LINE群組',createdAt:Date.now(),totalReports:0,adminNote:'',isWarned:false,warnReason:'',warnHistory:[],updatedAt:Date.now()});
+}
+
+/* ============================================================
+   FIREBASE INIT
+============================================================ */
+let db=null,auth=null,useLocal=false;
+let _fbReady=false;
+try{
+  firebase.initializeApp({
+    apiKey:"AIzaSyA7WRTo0Ws0Io4i774K7gjIZCIGgpk1iyw",
+    authDomain:"badminton-booking-a83e5.firebaseapp.com",
+    projectId:"badminton-booking-a83e5",
+    storageBucket:"badminton-booking-a83e5.firebasestorage.app",
+    messagingSenderId:"95066482136",
+    appId:"1:95066482136:web:08fcac6aded0e38a9afead"
+  });
+  db=firebase.firestore();
+  auth=firebase.auth();
+  // 啟用離線持久化，提升穩定性
+  db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+  // 嘗試匿名登入；失敗才切換本地模式
+  auth.signInAnonymously().catch(err=>{
+    console.warn('Firebase anonymous auth failed:',err.code);
+    if(!_fbReady){useLocal=true;initLocal();}
+  });
+}catch(e){useLocal=true;initLocal();}
+
+function initLocal(){
+  useLocal=true;seedLocalData();
+  fd('app').style.display='block';
+  loadCfg();loadPub();
+}
+
+/* ── DB abstraction ── */
+const DB={
+  async get(col,id){
+    if(useLocal){const all=LOCAL.getAll(col);return all.find(x=>x.id===id)||null;}
+    const s=await db.collection(col).doc(id).get();return s.exists?{id:s.id,...s.data()}:null;
+  },
+  async getDoc(col,id){
+    if(useLocal){const m=LOCAL.get(col);return m?m[id]||null:null;}
+    const s=await db.collection(col).doc(id).get();return s.exists?s.data():null;
+  },
+  async set(col,id,data){
+    if(useLocal){const m=LOCAL.get(col)||{};m[id]={...data};LOCAL.set(col,m);return;}
+    await db.collection(col).doc(id).set(data,{merge:true});
+  },
+  async update(col,id,data){
+    if(useLocal){LOCAL.update(col,id,data);return;}
+    await db.collection(col).doc(id).update(data);
+  },
+  async delete(col,id){
+    if(useLocal){LOCAL.delete(col,id);return;}
+    await db.collection(col).doc(id).delete();
+  },
+  async add(col,data){
+    if(useLocal){const d=LOCAL.push(col,data);return d.id;}
+    const ref=await db.collection(col).add({...data,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    return ref.id;
+  },
+  async query(col,filters,orderField,orderDir){
+    if(useLocal){
+      let arr=LOCAL.getAll(col);
+      (filters||[]).forEach(([f,op,v])=>{arr=arr.filter(x=>op==='=='?x[f]===v:op==='>='?x[f]>=v:op==='<='?x[f]<=v:op==='!='?x[f]!==v:true);});
+      if(orderField)arr.sort((a,b)=>{const r=String(a[orderField]||'').localeCompare(String(b[orderField]||''));return orderDir==='desc'?-r:r;});
+      return arr;
+    }
+    let q=db.collection(col);
+    (filters||[]).forEach(([f,op,v])=>{q=q.where(f,op,v);});
+    if(orderField)q=q.orderBy(orderField,orderDir||'asc');
+    const snap=await q.get();const res=[];snap.forEach(d=>res.push({id:d.id,...d.data()}));return res;
+  },
+  sv(){return useLocal?Date.now():firebase.firestore.FieldValue.serverTimestamp();},
+};
+
+/* ============================================================
+   STATE
+============================================================ */
+let me=null,sesCache=[],cfg={},editSesId=null;
+let payTarget=null,regSesId=null;
+let rosterMode='all',rosterSesId=null;
+let customSesId=null,slotCtr=0,sesFilter='ongoing';
+let buddyFilter='normal',buddiesList=[];
+let currentLang=localStorage.getItem('bonnyLang')||'zh';
+let regStep=1,regPersons=[],regSelectedSesId=null;
+let promoSelectedIds=new Set();
+let resetTimer=null;
+let myRegsFilter='upcoming';
+let demoteTarget=null;
+
+// ── LINE / LIFF 身份 ──
+let lineUser=null;  // {lineUserId, lineDisplayName, linePictureUrl}
+let buddy=null;     // Firestore buddies doc for current user
+let liffReady=false;
+let pendingRegSesId=null; // 未登入時點報名，暫存場次 id
+
+// ── 程度選項 (1~18 羽協分級) ──
+const LEVELS=[...Array(18)].map((_,i)=>i+1); // [1..18]
+
+/* ============================================================
+   UTILS
+============================================================ */
+/* ── 通用確認 modal（取代 window.confirm，相容 iframe 環境）── */
+function confirmDialog(msg,okLabel,okClass,callback){
+  fd('mo-confirm-msg').textContent=msg;
+  const okBtn=fd('mo-confirm-ok');
+  okBtn.textContent=okLabel||'確認';
+  okBtn.className='btn '+(okClass||'btn-d');
+  // 移除舊監聽器
+  const newOk=okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOk,okBtn);
+  newOk.addEventListener('click',()=>{cm('mo-confirm');callback();});
+  om('mo-confirm');
+}
+function toast(msg,type='i'){const c=document.getElementById('toast-c'),el=document.createElement('div');el.className='toast t-'+type;el.textContent=msg;c.appendChild(el);setTimeout(()=>el.remove(),3500);}
+function cm(id){document.getElementById(id).classList.remove('active');}
+function om(id){document.getElementById(id).classList.add('active');}
+function fd(id){return document.getElementById(id);}
+function fmtDate(s,lang){if(!s)return'';return new Date(s+'T00:00:00').toLocaleDateString(lang==='en'?'en-US':'zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});}
+function fmtDateShort(s){if(!s)return'';const d=new Date(s+'T00:00:00');const m=d.getMonth()+1,dd=d.getDate();const days=['日','一','二','三','四','五','六'];return `${m}/${dd}(${days[d.getDay()]})`;}
+function fmtTs(ts){if(!ts)return'—';const d=new Date(typeof ts==='object'&&ts.seconds?ts.seconds*1000:ts);return d.toLocaleDateString('zh-TW')+' '+d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}
+function hashPw(pw){let h=0;for(let i=0;i<pw.length;i++){h=((h<<5)-h)+pw.charCodeAt(i);h|=0;}return h.toString(16);}
+function pmLabel(m){return m==='cash'?'現金':m==='linepay'?'Line Pay':m||'其他';}
+const SC=['#7AC77E','#4A9EDE','#9B72CF','#F5A623','#E86A58','#26C6DA'];
+const SCC=['a','b','c','d','e','f'];
+function sc(idx){return SC[idx%SC.length];}
+function scc(idx){return'td-'+SCC[idx%SCC.length];}
+
+/* ── PHONE NORMALIZATION (V4.1) ── */
+function normalizePhone(p){return(p||'').replace(/\D/g,'');}
+
+/* ── Session expiry ── */
+function isAutoEnded(s){
+  if(!s||!s.slots||!s.slots.length)return false;
+  const now=new Date();let latest=new Date(0);
+  (s.slots||[]).forEach(sl=>{if(sl.endTime){const d=new Date((s.date||'')+'T'+sl.endTime);if(d>latest)latest=d;}});
+  return now>latest;
+}
+function effStatus(s){if(!s)return'closed';if(isAutoEnded(s))return'ended';return s.status||'open';}
+
+/* ── Availability calc ──
+   規則：
+   - 普通時段（A/B）：quota - 直接報A的人 - 報C(合併時段)的人
+   - 合併時段（C）：取所有子時段剩餘名額的最小值
+     C.registered = 直接報C的人數
+     A剩 = A.quota - A.registered - C.registered
+     B剩 = B.quota - B.registered - C.registered
+     C剩 = min(A剩, B剩)
+── */
+function calcAvail(s,sl){
+  if(!sl)return 0;
+  if(sl.combinedWith&&sl.combinedWith.length){
+    // C 時段：剩餘 = min(每個子時段的剩餘)
+    // 子時段剩餘 = child.quota - child.registered(直接報A/B) - sl.registered(報C)
+    const cReg=sl.registered||0;
+    const childAvails=sl.combinedWith.map(cid=>{
+      const c=s.slots.find(x=>x.id===cid);
+      if(!c)return 0;
+      const cap=c.quota===9999?(s.courts||1)*8:c.quota;
+      return Math.max(0,cap-(c.registered||0)-cReg);
+    });
+    return childAvails.length?Math.min(...childAvails):0;
+  }else{
+    // 普通時段：quota - 直接報此時段 - 所有以此時段為子時段的合併時段已報人數
+    const selfUsed=sl.registered||0;
+    const comboUsed=(s.slots||[])
+      .filter(x=>x.combinedWith&&x.combinedWith.includes(sl.id))
+      .reduce((sum,x)=>sum+(x.registered||0),0);
+    const cap=sl.quota===9999?(s.courts||1)*8:sl.quota;
+    return Math.max(0,cap-selfUsed-comboUsed);
+  }
+}
+
+/* ── Source display helper ── */
+function fmtSource(src,username){
+  if(!src)return'—';
+  if(username)return`${src}（${username}）`;
+  return src;
+}
+
+/* ============================================================
+   I18N
+============================================================ */
+const I18N={
+  'myregs-title':{zh:'我的報名紀錄',en:'My Bookings'},
+  'myregs-desc':{zh:'輸入報名時使用的電話號碼，查詢您的報名紀錄',en:'Enter your phone number to check your bookings.'},
+  'myregs-btn':{zh:'查詢',en:'Search'},
+  'myregs-upcoming-btn':{zh:'即將到來',en:'Upcoming'},
+  'myregs-history-btn':{zh:'歷史紀錄',en:'History'},
+  'myregs-cancelled-btn':{zh:'取消紀錄',en:'Cancelled'},
+  'nav-pub':{zh:'場次報名',en:'Sessions'},
+  'nav-myregs':{zh:'我的報名',en:'My Bookings'},
+};
+function setLang(l){
+  currentLang=l;localStorage.setItem('bonnyLang',l);
+  fd('lt-zh').classList.toggle('act',l==='zh');
+  fd('lt-en').classList.toggle('act',l==='en');
+  // apply i18n
+  Object.entries(I18N).forEach(([id,tx])=>{const el=fd(id);if(el)el.textContent=tx[l]||tx.zh;});
+  if(document.getElementById('page-pub').classList.contains('active'))loadPub();
+  if(document.getElementById('page-myregs').classList.contains('active')){
+    const r=fd('myregs-result');if(r&&r.innerHTML&&!r.innerHTML.includes('spinner'))queryMyRegs();
+  }
+}
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+function showPage(p){
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(x=>x.classList.remove('act'));
+  document.querySelectorAll('.mnb').forEach(x=>x.classList.remove('act'));
+  const pg=fd('page-'+p);if(!pg)return;
+  pg.classList.add('active');
+  if(p==='pub'){
+    fd('nav-pub').classList.add('act');
+    if(fd('mnb-pub'))fd('mnb-pub').classList.add('act');
+    loadPub();
+  }else if(p==='adm'){
+    if(fd('nav-adm'))fd('nav-adm').classList.add('act');
+    if(fd('mnb-adm'))fd('mnb-adm').classList.add('act');
+    loadAdmSes();
+  }else if(p==='myregs'){
+    if(fd('nav-myregs'))fd('nav-myregs').classList.add('act');
+    if(fd('mnb-myregs'))fd('mnb-myregs').classList.add('act');
+    renderMyRegs();
+  }else if(p==='profile'){
+    if(fd('mnb-profile'))fd('mnb-profile').classList.add('act');
+    renderProfilePage();
+  }
+}
+function goLogin(){fd('app').style.display='none';fd('login-pg').style.display='flex';const mn=fd('mob-nav');if(mn)mn.style.display='none';}
+function backToMain(){fd('login-pg').style.display='none';fd('app').style.display='block';const mn=fd('mob-nav');if(mn)mn.style.display='';showPage('pub');}
+
+/* ============================================================
+   LIFF / LINE AUTH
+============================================================ */
+const LIFF_ID_PLACEHOLDER='__LIFF_ID__'; // 部署時替換為實際 LIFF ID
+
+async function initLiff(){
+  // 取設定中的 LIFF ID
+  const liffId=cfg.liffId||LIFF_ID_PLACEHOLDER;
+  if(!liffId||liffId===LIFF_ID_PLACEHOLDER||liffId.trim()===''){
+    // 尚未設定 LIFF ID → 顯示提示但不阻斷使用（本地模式用假帳號）
+    if(useLocal){
+      simulateLineLogin();
+    }else{
+      updateLineUI(false);
+      fd('nav-line-login').style.display='';
+    }
+    return;
+  }
+  try{
+    await liff.init({liffId});
+    liffReady=true;
+    if(liff.isLoggedIn()){
+      const profile=await liff.getProfile();
+      lineUser={lineUserId:profile.userId,lineDisplayName:profile.displayName,linePictureUrl:profile.pictureUrl||''};
+      await loadOrCreateBuddy();
+    }else{
+      updateLineUI(false);
+    }
+  }catch(e){
+    console.warn('LIFF init failed:',e.message);
+    if(useLocal){simulateLineLogin();}
+    else{updateLineUI(false);}
+  }
+}
+
+function simulateLineLogin(){
+  // 本地測試模式：模擬一個 LINE 登入用戶
+  lineUser={lineUserId:'LOCAL_TEST_USER',lineDisplayName:'測試球友',linePictureUrl:''};
+  const existing=LOCAL.getAll('buddies').find(b=>b.lineUserId==='LOCAL_TEST_USER');
+  if(existing){buddy=existing;updateLineUI(true);}
+  else{buddy=null;showFirstRunModal();}
+}
+
+async function startLineLogin(){
+  closeLineGate();
+  if(useLocal){simulateLineLogin();return;}
+  const liffId=cfg.liffId||'';
+  if(!liffId||liffId===LIFF_ID_PLACEHOLDER){
+    toast('尚未設定 LIFF ID，請至系統設定填入','err');return;
+  }
+  if(!liffReady){
+    try{
+      await liff.init({liffId});
+      liffReady=true;
+    }catch(e){
+      const msg=e.message||'';
+      if(msg.includes('400')||msg.includes('bad request')||msg.includes('developing')){
+        toast('LINE 登入設定錯誤：請確認 LIFF Channel 已發布（非 developing 狀態），且 Endpoint URL 已設定為本站網址','err');
+      }else if(msg.includes('invalid')||msg.includes('not found')){
+        toast('LIFF ID 無效，請至系統設定重新填入正確的 LIFF ID','err');
+      }else{
+        toast('LINE 初始化失敗：'+msg,'err');
+      }
+      return;
+    }
+  }
+  try{
+    if(liff.isInClient()){
+      liff.login();
+    }else{
+      liff.login({redirectUri:window.location.href});
+    }
+  }catch(e){
+    toast('LINE 登入失敗：'+e.message,'err');
+  }
+}
+
+async function loadOrCreateBuddy(){
+  if(!lineUser)return;
+  const uid=lineUser.lineUserId;
+  try{
+    if(useLocal){buddy=LOCAL.getAll('buddies').find(b=>b.lineUserId===uid)||null;}
+    else{const snap=await db.collection('buddies').doc(uid).get();buddy=snap.exists?{id:snap.id,...snap.data()}:null;}
+    if(!buddy){
+      showFirstRunModal();
+    }else{
+      // 更新 LINE 顯示名稱（可能已更換）
+      const upd={lineDisplayName:lineUser.lineDisplayName,linePictureUrl:lineUser.linePictureUrl,updatedAt:Date.now()};
+      if(useLocal){LOCAL.update('buddies',buddy.id||uid,upd);}
+      else{await db.collection('buddies').doc(uid).update(upd);}
+      buddy=Object.assign({},buddy,upd);
+      updateLineUI(true);
+      // 若有等待中的報名，繼續
+      if(pendingRegSesId){const sid=pendingRegSesId;pendingRegSesId=null;openReg(sid);}
+    }
+  }catch(e){console.warn('loadOrCreateBuddy error:',e);updateLineUI(false);}
+}
+
+function updateLineUI(loggedIn){
+  // Nav LINE elements
+  if(fd('nav-line-profile'))fd('nav-line-profile').style.display=loggedIn?'flex':'none';
+  if(fd('nav-line-login'))fd('nav-line-login').style.display=loggedIn?'none':'';
+  if(fd('nav-myregs'))fd('nav-myregs').style.display=loggedIn?'':'none';
+  // Mobile nav
+  if(fd('mnb-myregs'))fd('mnb-myregs').style.display=loggedIn?'':'none';
+  if(fd('mnb-profile'))fd('mnb-profile').style.display=loggedIn?'':'none';
+  if(fd('mnb-line-login'))fd('mnb-line-login').style.display=loggedIn?'none':'';
+  if(!loggedIn)return;
+  // Avatar
+  const nicknameEl=fd('nav-nickname');
+  const avatarWrap=fd('nav-avatar-wrap');
+  const nick=buddy?buddy.nickname||buddy.lineDisplayName:lineUser.lineDisplayName;
+  if(nicknameEl)nicknameEl.textContent=nick;
+  if(avatarWrap){
+    if(lineUser.linePictureUrl){avatarWrap.innerHTML=`<img src="${lineUser.linePictureUrl}" class="nav-avatar" alt="avatar">`;}
+    else{avatarWrap.innerHTML=`<div class="nav-avatar-placeholder">${nick.charAt(0)}</div>`;}
+  }
+}
+
+async function doLineLogout(){
+  if(!useLocal&&liffReady&&liff.isLoggedIn()){try{liff.logout();}catch(e){}}
+  lineUser=null;buddy=null;
+  updateLineUI(false);
+  showPage('pub');
+  toast('已登出 LINE','ok');
+}
+
+/* ── LINE gate (when unauthenticated clicks register) ── */
+function openLineGate(sesId){
+  pendingRegSesId=sesId;
+  fd('line-gate').classList.add('active');
+}
+function closeLineGate(){fd('line-gate').classList.remove('active');}
+
+/* ── First-run profile setup ── */
+function showFirstRunModal(){
+  // Build avatar preview
+  const avatarArea=fd('firstrun-avatar-area');
+  if(avatarArea){
+    if(lineUser&&lineUser.linePictureUrl){
+      avatarArea.innerHTML=`<img src="${lineUser.linePictureUrl}" class="profile-avatar-lg" alt="avatar">`;
+    }else if(lineUser){
+      const n=lineUser.lineDisplayName||'?';
+      avatarArea.innerHTML=`<div class="profile-avatar-lg-placeholder">${n.charAt(0)}</div>`;
+    }else avatarArea.innerHTML='';
+  }
+  // Pre-fill nickname with LINE display name
+  const ni=fd('fr-nickname');
+  if(ni&&lineUser)ni.value=lineUser.lineDisplayName||'';
+  // Build level grid
+  buildLevelGrid('fr-level-grid',null);
+  fd('fr-source').value='';fd('fr-source-other-wrap').style.display='none';
+  if(fd('fr-source-other'))fd('fr-source-other').value='';
+  om('mo-firstrun');
+}
+
+async function saveFirstRun(){
+  const nickname=(fd('fr-nickname').value||'').trim();
+  if(!nickname){toast('請填寫稱呼','err');return;}
+  const phone=normalizePhone(fd('fr-phone').value||'');
+  const level=getSelectedLevel('fr-level-grid');
+  const srcVal=fd('fr-source').value;
+  const source=srcVal==='other'?(fd('fr-source-other').value||'').trim():srcVal;
+  const uid=lineUser.lineUserId;
+  const now=Date.now();
+  const doc={lineUserId:uid,lineDisplayName:lineUser.lineDisplayName,linePictureUrl:lineUser.linePictureUrl||'',nickname,phone,level,contactSource:source,createdAt:now,updatedAt:now,totalReports:0,adminNote:'',isWarned:false,warnReason:'',warnHistory:[]};
+  if(useLocal){LOCAL.push('buddies',doc);buddy={...doc,id:uid};}
+  else{await db.collection('buddies').doc(uid).set(doc);buddy={id:uid,...doc};}
+  cm('mo-firstrun');
+  toast('設定完成，歡迎加入！','ok');
+  updateLineUI(true);
+  if(pendingRegSesId){const sid=pendingRegSesId;pendingRegSesId=null;openReg(sid);}
+}
+
+function onFrSourceChange(){
+  const v=fd('fr-source').value;
+  if(fd('fr-source-other-wrap'))fd('fr-source-other-wrap').style.display=v==='other'?'block':'none';
+}
+
+/* ── Level grid builder ── */
+function buildLevelGrid(containerId,selectedLevel){
+  const c=fd(containerId);if(!c)return;
+  c.innerHTML=LEVELS.map(n=>`<button type="button" class="level-pill${selectedLevel===n?' sel':''}" onclick="selectLevel('${containerId}',${n})">${n}</button>`).join('');
+}
+function selectLevel(containerId,n){
+  const c=fd(containerId);if(!c)return;
+  c.querySelectorAll('.level-pill').forEach(b=>{b.classList.toggle('sel',parseInt(b.textContent)===n);});
+}
+function getSelectedLevel(containerId){
+  const c=fd(containerId);if(!c)return null;
+  const sel=c.querySelector('.level-pill.sel');return sel?parseInt(sel.textContent):null;
+}
+
+/* ── Profile page ── */
+function renderProfilePage(){
+  if(!lineUser||!buddy){showPage('pub');return;}
+  // Avatar
+  const avatarArea=fd('profile-avatar-area');
+  if(avatarArea){
+    if(lineUser.linePictureUrl)avatarArea.innerHTML=`<img src="${lineUser.linePictureUrl}" class="profile-avatar-lg" alt="avatar">`;
+    else{const n=buddy.nickname||lineUser.lineDisplayName||'?';avatarArea.innerHTML=`<div class="profile-avatar-lg-placeholder">${n.charAt(0)}</div>`;}
+  }
+  if(fd('profile-line-name'))fd('profile-line-name').textContent='LINE：'+lineUser.lineDisplayName;
+  if(fd('profile-nickname'))fd('profile-nickname').textContent=buddy.nickname||buddy.lineDisplayName||'';
+  // Form fields
+  if(fd('pf-nickname'))fd('pf-nickname').value=buddy.nickname||'';
+  if(fd('pf-phone'))fd('pf-phone').value=buddy.phone||'';
+  buildLevelGrid('pf-level-grid',buddy.level||null);
+  if(fd('pf-source'))fd('pf-source').value=buddy.contactSource||'';
+  onPfSourceChange();
+  if(fd('pf-source-other'))fd('pf-source-other').value=(buddy.contactSource&&!['LINE群組','LINE社群','官方LINE','Facebook'].includes(buddy.contactSource))?buddy.contactSource:'';
+}
+
+function onPfSourceChange(){
+  const v=(fd('pf-source')||{}).value||'';
+  if(fd('pf-source-other-wrap'))fd('pf-source-other-wrap').style.display=v==='other'?'block':'none';
+}
+
+async function saveProfile(){
+  const nickname=(fd('pf-nickname').value||'').trim();
+  if(!nickname){toast('請填寫稱呼','err');return;}
+  const phone=normalizePhone(fd('pf-phone').value||'');
+  const level=getSelectedLevel('pf-level-grid');
+  const srcVal=fd('pf-source').value;
+  const source=srcVal==='other'?(fd('pf-source-other').value||'').trim():srcVal;
+  const upd={nickname,phone,level,contactSource:source,updatedAt:Date.now()};
+  const uid=lineUser.lineUserId;
+  if(useLocal){LOCAL.update('buddies',buddy.id||uid,upd);}
+  else{await db.collection('buddies').doc(uid).update(upd);}
+  buddy=Object.assign({},buddy,upd);
+  updateLineUI(true);
+  fd('profile-nickname').textContent=nickname;
+  toast('個人資料已更新','ok');
+}
+
+/* ============================================================
+   AUTH
+============================================================ */
+async function doLogin(){
+  const u=fd('l-user').value.trim(),p=fd('l-pw').value,e=fd('l-err');
+  if(!u||!p){e.textContent='請輸入帳號密碼';e.style.display='block';return;}
+  try{
+    let d;
+    if(useLocal){const m=LOCAL.get('admins');d=m?m[u]:null;}
+    else{const snap=await db.collection('admins').doc(u).get();d=snap.exists?snap.data():null;}
+    if(!d){e.textContent='帳號不存在';e.style.display='block';return;}
+    if(d.passwordHash!==hashPw(p)){e.textContent='密碼錯誤';e.style.display='block';return;}
+    me={username:u,role:d.role,permissions:d.permissions||{}};e.style.display='none';
+    fd('login-pg').style.display='none';fd('app').style.display='block';
+    const mn=fd('mob-nav');if(mn)mn.style.display='';
+    applyAdminUI();showPage('adm');
+  }catch(err){e.textContent='登入失敗：'+err.message;e.style.display='block';}
+}
+function doLogout(){me=null;applyAdminUI();showPage('pub');}
+
+/* ── Permission helpers (V4.1: 3-level per tab) ── */
+function hasPerm(tab){
+  if(!me)return false;
+  if(me.role==='super_admin')return true;
+  const p=me.permissions||{};
+  const v=p[tab];
+  return v==='edit'||v==='view'||v===true;
+}
+function canEdit(tab){
+  if(!me)return false;
+  if(me.role==='super_admin')return true;
+  const p=me.permissions||{};
+  const v=p[tab];
+  return v==='edit'||v===true;
+}
+
+function applyAdminUI(){
+  const ok=!!me;
+  fd('nav-adm').style.display=ok?'':'none';
+  fd('nav-login').style.display=ok?'none':'';
+  fd('nav-out').style.display=ok?'':'none';
+  // mobile nav
+  if(fd('mnb-adm'))fd('mnb-adm').style.display=ok?'':'none';
+  if(fd('mnb-login'))fd('mnb-login').style.display=ok?'none':'';
+  if(fd('mnb-out'))fd('mnb-out').style.display=ok?'':'none';
+  if(ok){
+    const sa=me.role==='super_admin';
+    // 系統設定：所有登入帳號都能看到（進去後依權限控制內容，至少能改自己密碼）
+    fd('t-settings').style.display='';
+    // 帳號管理：僅主管理員可見，其他帳號完全看不到此分頁
+    fd('t-accounts').style.display=sa?'':'none';
+    // 其他分頁依各自權限
+    fd('t-sessions').style.display=hasPerm('sessions')||sa?'':'none';
+    fd('t-regs').style.display=hasPerm('regs')||sa?'':'none';
+    fd('t-hist').style.display=hasPerm('hist')||sa?'':'none';
+    fd('t-buddies').style.display=hasPerm('buddies')||sa?'':'none';
+    fd('btn-new-ses').style.display=canEdit('sessions')?'':'none';
+    // 設定頁內部區塊依權限顯示
+    applySettingsBlocks();
+  }
+}
+
+function applySettingsBlocks(){
+  if(!me)return;
+  const sa=me.role==='super_admin';
+  const canFee=sa||canEdit('settings');
+  // 有 settings 可編輯權限（或主管理員）才顯示各設定區塊
+  if(fd('s-block-fees'))fd('s-block-fees').style.display=canFee?'':'none';
+  if(fd('s-block-title'))fd('s-block-title').style.display=canFee?'':'none';
+  if(fd('s-block-promo'))fd('s-block-promo').style.display=canFee?'':'none';
+  if(fd('s-block-reset'))fd('s-block-reset').style.display=sa?'':'none';
+  // 修改密碼區塊：所有登入帳號永遠顯示
+  if(fd('s-block-pw'))fd('s-block-pw').style.display='';
+  // 若無任何設定權限，顯示提示說明
+  const hint=fd('s-no-perm-hint');
+  if(hint)hint.style.display=canFee?'none':'block';
+}
+
+/* ============================================================
+   SETTINGS
+============================================================ */
+const NOTIF_DEFAULTS={
+  oczh:'🎉 報名成功！\n\n恭喜 [姓名]，您已成功報名！\n\n場次：[日期] [時段]\n費用：NT$ [金額]\n\n請於開打前 15 分鐘到場。',
+  ocen:'🎉 Registration Confirmed!\n\nCongrats [姓名]! Your spot is confirmed.\n\nEvent: [日期] [時段]\nFee: NT$ [金額]',
+  owzh:'⏳ 進入備取名單\n\n您好 [姓名]，您已進入備取名單。\n\n場次：[日期] [時段]\n備取順序：#[備取順序]',
+  owen:'⏳ Added to Waitlist\n\nHello [姓名], you are on the waitlist.\n\nEvent: [日期] [時段]\nWaitlist: #[備取順序]',
+  cczh:'🎉 教練課報名成功！\n\n恭喜 [姓名]，教練課已確認！\n\n課程：[日期] [時段]\n費用：NT$ [金額]',
+  ccen:'🎉 Coaching Session Confirmed!\n\nCongrats [姓名]!\n\nSession: [日期] [時段]\nFee: NT$ [金額]',
+  cwzh:'⏳ 教練課備取通知\n\n您好 [姓名]，您已進入備取。\n\n課程：[日期] [時段]\n備取順序：#[備取順序]',
+  cwen:'⏳ Coaching Waitlist\n\nHello [姓名], you are on the waitlist.\n\nSession: [日期] [時段]\nWaitlist: #[備取順序]',
+};
+
+const PROMO_DEFAULTS={
+  singleStat:'統計人數\n請依序可以報名的時段+幾人(跟名稱)\n請假請-幾人和時段(請勿刪除訊息)謝謝',
+  singleFooter:'📌報名成功後，若臨時有事，請於「一天前」告知感謝配合 🙏',
+  multiHeader:'✨本週零打資訊更新 ✨',
+  multiFooter:'',
+};
+
+async function loadCfg(){
+  try{
+    let d;
+    if(useLocal){const m=LOCAL.get('settings');d=m?m.global:null;}
+    else{const snap=await db.collection('settings').doc('global').get();d=snap.exists?snap.data():null;}
+    if(d){
+      cfg=d;
+      const siteTitle=d.siteTitle||'🏸 Bonny 羽球隊';
+      document.title=siteTitle+' — 場次報名';
+      if(fd('nav-brand'))fd('nav-brand').innerHTML=siteTitle.replace(' ','<span> ')+'</span>';
+      if(fd('s-site-title'))fd('s-site-title').value=siteTitle;
+      if(fd('s-casual'))fd('s-casual').value=d.casualFee||230;
+      if(fd('s-coach'))fd('s-coach').value=d.coachFee||350;
+      if(fd('s-wel-zh'))fd('s-wel-zh').value=d.welcomeZh||'';
+      if(fd('s-wel-en'))fd('s-wel-en').value=d.welcomeEn||'';
+      Object.keys(NOTIF_DEFAULTS).forEach(k=>{const el=fd('notif-'+k);if(el)el.value=d['notif_'+k]||NOTIF_DEFAULTS[k];});
+      if(d.liffId!=null&&fd('s-liff-id'))fd('s-liff-id').value=d.liffId||'';
+      if(d.makeWebhookUrl!=null&&fd('s-make-webhook'))fd('s-make-webhook').value=d.makeWebhookUrl||'';
+      if(fd('s-promo-single-footer'))fd('s-promo-single-footer').value=d.promoSingleFooter!=null?d.promoSingleFooter:PROMO_DEFAULTS.singleFooter;
+      if(fd('s-promo-multi-header'))fd('s-promo-multi-header').value=d.promoMultiHeader!=null?d.promoMultiHeader:PROMO_DEFAULTS.multiHeader;
+      if(fd('s-promo-multi-footer'))fd('s-promo-multi-footer').value=d.promoMultiFooter!=null?d.promoMultiFooter:PROMO_DEFAULTS.multiFooter;
+      const wk=currentLang==='en'?'welcomeEn':'welcomeZh';
+      if(d[wk])fd('pub-welcome').textContent=d[wk];
+      if(fd('pub-title'))fd('pub-title').textContent=siteTitle;
+      if(fd('login-title'))fd('login-title').textContent=siteTitle;
+    }
+  }catch(e){}
+}
+
+async function saveSiteTitle(){
+  const t=fd('s-site-title').value.trim()||'🏸 Bonny 羽球隊';
+  if(useLocal){const m=LOCAL.get('settings')||{};m.global=Object.assign(m.global||{},{siteTitle:t});LOCAL.set('settings',m);}
+  else await db.collection('settings').doc('global').set({siteTitle:t},{merge:true});
+  cfg.siteTitle=t;
+  document.title=t+' — 場次報名';
+  if(fd('nav-brand'))fd('nav-brand').innerHTML=t.replace(' ','<span> ')+'</span>';
+  if(fd('pub-title'))fd('pub-title').textContent=t;
+  if(fd('login-title'))fd('login-title').textContent=t;
+  toast('網站名稱已更新','ok');
+}
+
+async function saveLiffId(){
+  const liffId=(fd('s-liff-id').value||'').trim();
+  if(useLocal){const m=LOCAL.get('settings')||{};m.global=Object.assign(m.global||{},{liffId});LOCAL.set('settings',m);}
+  else await db.collection('settings').doc('global').set({liffId},{merge:true});
+  cfg.liffId=liffId;
+  toast('LIFF ID 已儲存，重新整理頁面後生效','ok');
+}
+
+/* ── Make Webhook 設定 ── */
+async function saveWebhookSettings(){
+  const url=(fd('s-make-webhook').value||'').trim();
+  if(useLocal){const m=LOCAL.get('settings')||{};m.global=Object.assign(m.global||{},{makeWebhookUrl:url});LOCAL.set('settings',m);}
+  else await db.collection('settings').doc('global').set({makeWebhookUrl:url},{merge:true});
+  cfg.makeWebhookUrl=url;
+  toast('Webhook 設定已儲存','ok');
+}
+
+async function testWebhook(){
+  const url=cfg.makeWebhookUrl||(fd('s-make-webhook')?fd('s-make-webhook').value.trim():'');
+  if(!url){toast('請先填寫 Make Webhook URL','err');return;}
+  const res=fd('webhook-test-result');
+  if(res){res.style.display='block';res.className='al al-i mt8';res.textContent='🔄 發送測試中...';}
+  try{
+    await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        type:'test',
+        message:'🧪 Webhook 測試成功！Bonny 羽球隊報名系統已連線。',
+        timestamp:new Date().toISOString(),
+        site:cfg.siteTitle||'Bonny 羽球隊'
+      })
+    });
+    if(res){res.className='al al-s mt8';res.textContent='✅ 測試訊息已發送！請確認 Make 是否收到，並查看 LINE 群組。';}
+    toast('測試訊號已送出','ok');
+  }catch(e){
+    if(res){res.className='al al-d mt8';res.textContent='❌ 發送失敗：'+e.message+'（常見原因：Webhook URL 不正確，或 Make Scenario 尚未啟動）';}
+    toast('測試失敗：'+e.message,'err');
+  }
+}
+
+/* ── 報名成功後觸發 Make Webhook 推播通知 ── */
+async function sendRegNotify(session, results, registrantName){
+  const url=cfg.makeWebhookUrl||'';
+  console.log('[Webhook] makeWebhookUrl=',url,'cfg=',cfg.makeWebhookUrl);
+  if(!url){console.warn('[Webhook] 未設定 makeWebhookUrl，略過通知');return;}
+
+  const confirmed=results.filter(r=>r.status==='confirmed');
+  const waitlist=results.filter(r=>r.status==='waitlist');
+  const totalFee=results.reduce((a,r)=>a+r.fee,0);
+
+  const updatedSes=sesCache.find(x=>x.id===session.id)||session;
+  const slotSummary=updatedSes.slots
+    .filter(sl=>!sl.combinedWith||!sl.combinedWith.length)
+    .map(sl=>{
+      const cap=sl.quota===9999?(updatedSes.courts||1)*8:sl.quota;
+      const used=sl.registered||0;
+      return `${sl.name}：${used}/${cap} 人`;
+    }).join('　');
+
+  const personLines=results.map(r=>{
+    const tag=r.status==='waitlist'?` ⏳備取#${r.waitOrder}`:'';
+    return `　• ${r.name}｜${r.slotName}｜NT$${r.fee}${tag}`;
+  }).join('\n');
+
+  const now=new Date();
+  const timeStr=now.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+  const message=[
+    `🏸 新報名通知　${timeStr}`,
+    `━━━━━━━━━━━━`,
+    `📅 ${session.name||fmtDate(session.date,'zh')}`,
+    session.location?`📍 ${session.location}`:'',
+    ``,
+    `👤 報名人：${registrantName}`,
+    personLines,
+    ``,
+    `✅ 正選 ${confirmed.length} 人${waitlist.length>0?`　⏳備取 ${waitlist.length} 人`:''}`,
+    `💰 本次合計：NT$ ${totalFee}`,
+    ``,
+    `📊 目前時段狀況`,
+    slotSummary,
+  ].filter(l=>l!==null&&l!==undefined).join('\n').replace(/\n{3,}/g,'\n\n');
+
+  const payload={
+    type:'new_registration',
+    message,
+    sessionId:session.id,
+    sessionName:session.name||fmtDate(session.date,'zh'),
+    sessionDate:session.date,
+    sessionLocation:session.location||'',
+    registrantName,
+    confirmedCount:confirmed.length,
+    waitlistCount:waitlist.length,
+    totalFee,
+    timestamp:new Date().toISOString(),
+  };
+
+  try{
+    await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+  }catch(e){
+    console.warn('Webhook 通知發送失敗：',e.message);
+  }
+}
+async function saveSettings(){
+  const d={
+    casualFee:parseInt(fd('s-casual').value)||230,
+    coachFee:parseInt(fd('s-coach').value)||350,
+    welcomeZh:fd('s-wel-zh').value,
+    welcomeEn:fd('s-wel-en').value
+  };
+  Object.keys(NOTIF_DEFAULTS).forEach(k=>{const el=fd('notif-'+k);if(el)d['notif_'+k]=el.value;});
+  if(useLocal){const m=LOCAL.get('settings')||{};m.global=Object.assign(m.global||{},d);LOCAL.set('settings',m);}
+  else await db.collection('settings').doc('global').set(d,{merge:true});
+  cfg=Object.assign({},cfg,d);
+  const wk=currentLang==='en'?'welcomeEn':'welcomeZh';
+  if(d[wk])fd('pub-welcome').textContent=d[wk];
+  toast('設定已儲存','ok');
+}
+async function savePromoSettings(){
+  const d={
+    promoSingleStat:(fd('s-promo-single-stat').value||''),
+    promoSingleFooter:(fd('s-promo-single-footer').value||''),
+    promoMultiHeader:(fd('s-promo-multi-header').value||PROMO_DEFAULTS.multiHeader),
+    promoMultiFooter:(fd('s-promo-multi-footer').value||''),
+  };
+  if(useLocal){const m=LOCAL.get('settings')||{};m.global=Object.assign(m.global||{},d);LOCAL.set('settings',m);}
+  else await db.collection('settings').doc('global').set(d,{merge:true});
+  cfg=Object.assign({},cfg,d);
+  toast('宣傳文案範本已儲存','ok');
+}
+async function changePw(){
+  const np=fd('s-newpw').value,cp=fd('s-cfpw').value;
+  if(!np||np!==cp){toast('兩次密碼不符','err');return;}
+  if(useLocal){const m=LOCAL.get('admins')||{};m[me.username].passwordHash=hashPw(np);LOCAL.set('admins',m);}
+  else await db.collection('admins').doc(me.username).update({passwordHash:hashPw(np)});
+  toast('密碼已更新','ok');fd('s-newpw').value='';fd('s-cfpw').value='';
+}
+
+/* ── System Reset ── */
+let resetInterval=null;
+function openResetConfirm(){
+  fd('reset-count').textContent='10';
+  fd('btn-confirm-reset').disabled=true;
+  om('mo-reset');
+  let count=10;
+  resetInterval=setInterval(()=>{
+    count--;
+    fd('reset-count').textContent=count;
+    if(count<=0){
+      clearInterval(resetInterval);
+      fd('btn-confirm-reset').disabled=false;
+    }
+  },1000);
+}
+function cancelReset(){
+  clearInterval(resetInterval);
+  cm('mo-reset');
+}
+async function doSystemReset(){
+  if(!me||me.role!=='super_admin'){toast('權限不足','err');return;}
+  try{
+    if(useLocal){
+      LOCAL.set('sessions',[]);LOCAL._store['sessions']=[];
+      LOCAL.set('registrations',[]);LOCAL._store['registrations']=[];
+      LOCAL.set('buddies',[]);LOCAL._store['buddies']=[];
+      LOCAL.set('warnings',[]);LOCAL._store['warnings']=[];
+    }else{
+      // Delete all docs in each collection
+      for(const col of['sessions','registrations','buddies','warnings']){
+        const snap=await db.collection(col).get();
+        const batch=db.batch();
+        snap.forEach(d=>batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    sesCache=[];cm('mo-reset');toast('系統已重置，所有資料已清除','ok');
+    loadAdmSes();
+  }catch(e){toast('重置失敗：'+e.message,'err');}
+}
+
+/* ============================================================
+   PUBLIC — load sessions
+============================================================ */
+async function loadPub(){
+  const c=fd('pub-list');c.innerHTML='<div class="loading"><div class="spinner"></div><span>載入中...</span></div>';
+  try{
+    const todayStr=new Date().toISOString().split('T')[0];
+    let sessions;
+    if(useLocal){
+      sessions=LOCAL.getAll('sessions').filter(s=>s.status!=='hidden'&&s.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date));
+    }else{
+      const snap=await db.collection('sessions').orderBy('date','asc').get();
+      sessions=[];snap.forEach(d=>{const data=d.data();if(data.status!=='hidden'&&data.date>=todayStr)sessions.push({id:d.id,...data});});
+    }
+    // Filter out expired sessions
+    sessions=sessions.filter(s=>!isAutoEnded(s));
+    sesCache=sessions;
+    const wk=currentLang==='en'?'welcomeEn':'welcomeZh';
+    if(cfg[wk])fd('pub-welcome').textContent=cfg[wk];
+    if(!sessions.length){c.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--text2)"><div style="font-size:2rem;margin-bottom:8px">🏸</div>'+(currentLang==='en'?'No open sessions right now.':'目前沒有開放中的場次')+'</div>';return;}
+    c.innerHTML='<div class="ses-grid">'+sessions.map(renderPubCard).join('')+'</div>';
+  }catch(err){c.innerHTML='<div class="al al-d">載入失敗：'+err.message+'</div>';}
+}
+
+function renderPubCard(s){
+  const eff=effStatus(s);
+  const en=currentLang==='en';
+  const typBadge=s.type==='coach'?`<span class="badge b-coach">${en?'Coaching':'教練場'}</span>`:`<span class="badge b-open">${en?'Open':'零打'}</span>`;
+  const locHtml=s.location?'<div style="font-size:.74rem;color:var(--text2);margin-top:2px">📍 '+s.location+'</div>':'';
+  if(eff==='ended'||eff==='closed'){
+    return`<div class="card ses-card" style="opacity:.7"><div class="sc-hd"><div class="fg-between"><div><div class="sc-title">${s.name||fmtDate(s.date,currentLang)}</div><div class="sc-date">${fmtDate(s.date,currentLang)}</div>${locHtml}</div>${typBadge}</div></div><div style="padding:16px;text-align:center"><span class="badge b-closed">🔒 ${en?'Registration Closed':'報名已截止'}</span></div></div>`;
+  }
+  const slotsHtml=s.slots.map((sl,i)=>{
+    const avail=calcAvail(s,sl);const total=sl.quota===9999?(s.courts||1)*8:sl.quota;
+    const used=total-Math.max(0,avail);const pct=total?Math.round(used/total*100):0;
+    const fc=avail<=0?'full':pct>=70?'mid':'ok';
+    let qt;
+    if(avail<=0)qt=`<span style="font-size:.75rem;color:var(--danger);font-weight:700">${en?'Full ⏳ Waitlist':'額滿 ⏳可備取'}</span>`;
+    else qt=`<span style="font-size:.75rem;color:var(--text2)">${en?'Left:':'剩 '}<strong>${avail}</strong>${en?' spots':' 名'}</span>`;
+    return`<div class="slot-row"><div><span class="slot-dot" style="background:${sc(i)}"></span><strong>${sl.name}</strong>${sl.startTime?` <span style="color:var(--text2);font-size:.74rem">${sl.startTime}~${sl.endTime}</span>`:''}${sl.fee?` <span style="color:var(--primary);font-size:.74rem;font-weight:700">NT$${sl.fee}</span>`:''}</div><div class="flex-gap">${qt}<div class="quota-bar"><div class="qf ${fc}" style="width:${Math.min(pct,100)}%"></div></div></div></div>`;
+  }).join('');
+  const descHtml=s.description?'<div class="sc-desc">'+s.description+'</div>':'';
+  const btnLabel=en?'Register Now':'立即報名';
+  return`<div class="card ses-card"><div class="sc-hd"><div class="fg-between"><div><div class="sc-title">${s.name||fmtDate(s.date,currentLang)}</div><div class="sc-date">${fmtDate(s.date,currentLang)}</div>${locHtml}</div>${typBadge}</div></div>${descHtml}<div class="mt8">${slotsHtml}</div><button class="btn btn-p" style="width:100%;justify-content:center;margin-top:14px" onclick="openReg('${s.id}')">${btnLabel}</button></div>`;
+}
+
+/* ============================================================
+   MULTI-STEP REGISTRATION
+============================================================ */
+function openReg(sid){
+  // 必須先登入 LINE 才能報名
+  if(!lineUser||!buddy){
+    openLineGate(sid);
+    return;
+  }
+  const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  regSesId=sid;regStep=1;
+  // 預設以登入用戶為第一位報名人
+  regPersons=[{
+    name:buddy.nickname||buddy.lineDisplayName||'',
+    slotId:'',
+    level:buddy.level?String(buddy.level):'',
+    note:'',
+    isSelf:true
+  }];
+  fd('mo-reg-title').textContent=(s.name||fmtDate(s.date,currentLang));
+  renderRegStep();om('mo-reg');
+}
+
+function renderRegStep(){
+  const s=sesCache.find(x=>x.id===regSesId);if(!s)return;
+  // 3 steps: 1=選時段, 2=報名人員, 3=確認
+  document.querySelectorAll('.step').forEach((el,i)=>{
+    el.classList.toggle('active',i+1===regStep);
+    el.classList.toggle('done',i+1<regStep);
+  });
+  const en=currentLang==='en';
+  let html='',btns='';
+
+  if(regStep===1){
+    // ── 選時段 ──
+    html=`<div class="fg"><label class="fl" style="font-size:.85rem;color:var(--text)">選擇時段：</label></div>
+    ${s.slots.map((sl,i)=>{
+      const avail=calcAvail(s,sl);const full=avail<=0;
+      return`<button class="rsb${full?' rsb-full':''}" onclick="selectSlotForAll('${sl.id}')" data-slot="${sl.id}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><span class="slot-dot" style="background:${sc(i)};width:10px;height:10px;display:inline-block;border-radius:50%;margin-right:7px"></span><strong>${sl.name}</strong>${sl.startTime?` <span style="color:var(--text2);font-size:.78rem">${sl.startTime}~${sl.endTime}</span>`:''}</div>
+          <div style="text-align:right">${sl.fee?`<div style="color:var(--primary);font-weight:700;font-size:.85rem">NT$${sl.fee}</div>`:''}
+          <div style="font-size:.75rem;color:${full?'var(--danger)':'var(--text2)'}">${full?(en?'Full ⏳ Waitlist':'額滿 ⏳可備取'):(en?'Left: ':'剩 ')+avail+(en?' spots':' 名')}</div></div>
+        </div></button>`;
+    }).join('')}
+    <p class="muted mt8">下一步可為不同人員分別選擇時段</p>`;
+    btns=`<button class="btn btn-ghost" onclick="cm('mo-reg')">${en?'Cancel':'取消'}</button><button class="btn btn-p" onclick="goRegStep(2)">${en?'Next →':'下一步 →'}</button>`;
+  }
+  else if(regStep===2){
+    // ── 報名人員 ──
+    html=`<div class="al al-i mb8" style="font-size:.8rem">
+      登入身份：<strong>${buddy?buddy.nickname||buddy.lineDisplayName:''}</strong>
+      ${buddy&&buddy.phone?'· 📱'+buddy.phone:''}
+    </div>
+    <div id="reg-persons-list">${regPersons.map((p,i)=>renderPersonRow(p,i,s)).join('')}</div>
+    <button class="btn btn-outline-p btn-sm mt8" onclick="addPerson()">+ ${en?'Add Person':'新增同行人員'}</button>`;
+    btns=`<button class="btn btn-ghost" onclick="goRegStep(1)">← ${en?'Back':'上一步'}</button><button class="btn btn-p" onclick="goRegStep(3)">${en?'Next →':'下一步 →'}</button>`;
+  }
+  else if(regStep===3){
+    // ── 確認 ──
+    const lines=regPersons.filter(p=>p.name&&p.slotId).map(p=>{
+      const sl=s.slots.find(x=>x.id===p.slotId);
+      const avail=sl?calcAvail(s,sl):1;
+      const status=avail>0?(en?'✓ Confirmed':'✓ 正選'):(en?'⏳ Waitlist':'⏳ 備取');
+      return`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><div>${p.name}${p.isSelf?'<span class="badge b-confirmed" style="font-size:.65rem;margin-left:5px">本人</span>':''}<span class="muted" style="font-size:.76rem"> — ${sl?sl.name:''}</span></div><div><span style="color:${avail>0?'var(--success)':'var(--warn)'};font-size:.76rem;margin-right:8px">${status}</span><strong style="color:var(--primary)">NT$${sl?sl.fee:0}</strong></div></div>`;
+    }).join('');
+    const total=regPersons.filter(p=>p.name&&p.slotId).reduce((sum,p)=>{const sl=s.slots.find(x=>x.id===p.slotId);return sum+(sl?sl.fee:0);},0);
+    html=`<div class="card" style="background:var(--bg)">${lines}<div style="display:flex;justify-content:space-between;padding:12px 0 0;font-weight:800;font-size:1rem"><span>${en?'Total':'合計'}</span><span style="color:var(--primary)">NT$ ${total}</span></div></div>
+    <p class="muted mt8">付款方式請於現場報到時告知管理員。</p>`;
+    btns=`<button class="btn btn-ghost" onclick="goRegStep(2)">← ${en?'Back':'上一步'}</button><button class="btn btn-p" id="r-submit" onclick="submitMultiReg()">${en?'Confirm 🎉':'確認報名 🎉'}</button>`;
+  }
+
+  fd('reg-step-content').innerHTML=html;
+  fd('reg-step-btns').innerHTML=btns;
+}
+
+
+function renderPersonRow(p,i,s){
+  const en=currentLang==='en';
+  const slotOpts=s.slots.map((sl,si)=>`<option value="${sl.id}" ${p.slotId===sl.id?'selected':''}>${sl.name}${sl.fee?' (NT$'+sl.fee+')':''}</option>`).join('');
+  const lvl=p.level?parseInt(p.level):null;
+  const levelPills=LEVELS.map(n=>`<button type="button" class="level-pill${lvl===n?' sel':''}" style="font-size:.68rem;padding:4px 2px" onclick="updatePersonLevel(${i},${n})">${n}</button>`).join('');
+  return`<div class="person-row" id="pr-${i}">
+    <div class="person-row-hd"><span>${i===0?'👤 '+( p.isSelf?'本人':'報名人 1'):'👤 同行人員 '+(i+1)}</span>${i>0?`<button class="rm-btn" onclick="removePerson(${i})">✕</button>`:''}</div>
+    <div class="g2">
+      <div class="fg" style="margin:0"><label class="fl">${en?'Nickname *':'稱呼 *'}${i===0?' ('+( buddy?buddy.nickname:'')+'）':''}</label><input class="fc pr-name" placeholder="${i===0?'或填其他稱呼':'同行者稱呼'}" value="${p.name||''}" oninput="updatePerson(${i},'name',this.value)"></div>
+      <div class="fg" style="margin:0"><label class="fl">時段</label><select class="fc pr-slot" onchange="updatePerson(${i},'slotId',this.value)"><option value="">請選擇</option>${slotOpts}</select></div>
+    </div>
+    <div class="fg mt8" style="margin-bottom:4px"><label class="fl">程度（選填）</label>
+      <div class="level-grid" style="grid-template-columns:repeat(9,1fr)">${levelPills}</div>
+    </div>
+    <div class="fg mt8" style="margin:0"><label class="fl">備註（選填）</label><input class="fc pr-note" placeholder="例：第一次來" value="${p.note||''}" oninput="updatePerson(${i},'note',this.value)"></div>
+  </div>`;
+}
+function updatePersonLevel(i,n){
+  if(regPersons[i]){regPersons[i].level=n;}
+  const pr=fd('pr-'+i);if(!pr)return;
+  pr.querySelectorAll('.level-pill').forEach(b=>{b.classList.toggle('sel',parseInt(b.textContent)===n);});
+}
+
+function updatePerson(i,field,val){if(regPersons[i])regPersons[i][field]=val;}
+function addPerson(){
+  // 新人員預設帶入人員1的時段
+  const defaultSlot=regPersons[0]?regPersons[0].slotId:'';
+  regPersons.push({name:'',slotId:defaultSlot,level:'',note:''});
+  const s=sesCache.find(x=>x.id===regSesId);
+  fd('reg-persons-list').innerHTML=regPersons.map((p,i)=>renderPersonRow(p,i,s)).join('');
+}
+function removePerson(i){regPersons.splice(i,1);const s=sesCache.find(x=>x.id===regSesId);fd('reg-persons-list').innerHTML=regPersons.map((p,idx)=>renderPersonRow(p,idx,s)).join('');}
+function selectSlotForAll(slotId){regPersons=regPersons.map(p=>({...p,slotId}));document.querySelectorAll('.rsb').forEach(b=>b.classList.toggle('sel',b.dataset.slot===slotId));}
+
+function goRegStep(n){
+  if(n===2&&regStep===1){
+    // 必須至少選一個時段（任一人）— 或允許在step2再選
+    // 無需驗證，讓用戶直接到step2
+  }
+  if(n===3&&regStep===2){
+    // 從 DOM 讀取最新值
+    const rows=document.querySelectorAll('#reg-persons-list .person-row');
+    rows.forEach((row,i)=>{
+      if(!regPersons[i])return;
+      regPersons[i].name=row.querySelector('.pr-name')?.value||regPersons[i].name||'';
+      regPersons[i].slotId=row.querySelector('.pr-slot')?.value||'';
+      regPersons[i].note=row.querySelector('.pr-note')?.value||'';
+    });
+    const valid=regPersons.filter(p=>p.name&&p.slotId);
+    if(!valid.length){toast('請至少填寫一位報名人員的稱呼和時段','err');return;}
+  }
+  regStep=n;renderRegStep();
+}
+
+async function submitMultiReg(){
+  const s=sesCache.find(x=>x.id===regSesId);if(!s)return;
+  if(!lineUser||!buddy){toast('請先登入 LINE','err');return;}
+  const persons=regPersons.filter(p=>p.name&&p.slotId);
+  if(!persons.length){toast('請填寫報名人員資料','err');return;}
+  const btn=fd('r-submit');if(btn){btn.disabled=true;btn.textContent='處理中...';}
+  try{
+    const ts=Date.now();
+    const results=[];
+    for(const p of persons){
+      const sl=s.slots.find(x=>x.id===p.slotId);if(!sl)continue;
+      const avail=calcAvail(s,sl);
+      const status=avail>0?'confirmed':'waitlist';
+      let waitOrder=null;
+      if(status==='waitlist'){
+        let wl;
+        if(useLocal){wl=LOCAL.find('registrations','primarySlotId',p.slotId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist');}
+        else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
+        waitOrder=wl.length+1;
+      }
+      const affected=[p.slotId];
+      let hasWarn=false;
+      try{
+        if(useLocal){hasWarn=LOCAL.find('warnings','lineUserId',lineUser.lineUserId).some(x=>x.active);}
+        else{const ws=await db.collection('warnings').where('lineUserId','==',lineUser.lineUserId).where('active','==',true).get();hasWarn=!ws.empty;}
+      }catch(e){}
+      const regDoc={
+        sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
+        lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
+        mainPhone:buddy.phone||'',name:p.name,
+        isSelf:!!p.isSelf,
+        contactSource:buddy.contactSource||'',level:p.level||null,
+        note:p.note,language:currentLang,slotIds:affected,primarySlotId:p.slotId,slotName:sl.name,
+        fee:sl.fee||0,status,waitlistOrder:waitOrder,paid:false,paymentMethod:'',absent:false,
+        source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
+      };
+      await DB.add('registrations',regDoc);
+      if(status==='confirmed'){
+        if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);}}
+        else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
+        const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);
+      }
+      results.push({...p,status,waitOrder,fee:sl.fee||0,slotName:sl.name});
+    }
+    // update buddy stats
+    await updateBuddyStats(lineUser.lineUserId,ts);
+    // 推播 LINE 通知給管理員（Make Webhook，非同步不擋流程）
+    const registrantName=buddy?buddy.nickname||buddy.lineDisplayName||lineUser.lineDisplayName:lineUser.lineDisplayName;
+    sendRegNotify(s,results,registrantName);
+    cm('mo-reg');
+    const hasWL=results.some(r=>r.status==='waitlist');
+    const en=currentLang==='en';
+    fd('n-icon').textContent=hasWL?'⏳':'✅';
+    fd('n-status-title').textContent=hasWL?(en?'Some placed on waitlist':'部分進入備取名單'):(en?'Registration successful!':'報名成功！');
+    const infoLines=results.map(r=>`${r.name} — ${r.slotName} NT$${r.fee} ${r.status==='waitlist'?'⏳#'+r.waitOrder:'✓'}`).join('\n');
+    fd('n-info').textContent=infoLines;
+    const totalFee=results.reduce((a,r)=>a+r.fee,0);
+    fd('n-msg').textContent=`總金額：NT$ ${totalFee}\n付款方式請於報到時告知管理員。`;
+    fd('n-msg').style.display='block';fd('n-warn').style.display='none';om('mo-notice');
+    loadPub();
+  }catch(err){toast('報名失敗：'+err.message,'err');}
+  finally{if(btn){btn.disabled=false;btn.textContent='確認報名 🎉';}}
+}
+
+async function updateBuddyStats(uid,ts){
+  const upd={lastReportedAt:ts,updatedAt:ts};
+  if(useLocal){
+    const b=LOCAL.getAll('buddies').find(x=>x.lineUserId===uid);
+    if(b){upd.totalReports=(b.totalReports||0)+1;LOCAL.update('buddies',b.id||uid,upd);}
+  }else{
+    await db.collection('buddies').doc(uid).update({lastReportedAt:ts,updatedAt:ts,totalReports:firebase.firestore.FieldValue.increment(1)});
+  }
+}
+
+/* ============================================================
+   MY REGISTRATIONS (LINE-based)
+============================================================ */
+function setMyRegsFilter(f,btn){
+  myRegsFilter=f;
+  document.querySelectorAll('#page-myregs .sf-btn').forEach(b=>b.classList.remove('act'));
+  if(btn)btn.classList.add('act');
+  renderMyRegs();
+}
+
+async function renderMyRegs(){
+  const res=fd('myregs-result');if(!res)return;
+  if(!lineUser||!buddy){
+    res.innerHTML=`<div class="card" style="text-align:center;padding:36px">
+      <div style="font-size:2rem;margin-bottom:10px">🔑</div>
+      <div style="font-weight:700;margin-bottom:6px">請先登入 LINE</div>
+      <div class="muted mb14">登入後即可查看您的報名紀錄</div>
+      <button class="line-login-btn" onclick="startLineLogin()">
+        <svg width="20" height="20" viewBox="0 0 22 22" fill="none"><rect width="22" height="22" rx="6" fill="#fff"/><path d="M11 4C7.134 4 4 6.79 4 10.22c0 2.983 2.65 5.478 6.23 5.952.243.052.574.16.658.367.075.187.049.479.024.668l-.106.635c-.032.19-.149.744.651.405.8-.338 4.318-2.543 5.89-4.354C18.46 12.65 19 11.497 19 10.22 19 6.79 15.866 4 11 4z" fill="#06C755"/></svg>
+        使用 LINE 登入
+      </button>
+    </div>`;
+    return;
+  }
+  res.innerHTML=`<div class="flex-gap mb14" style="align-items:center">
+    <h2 class="sec-title" style="margin:0">我的報名紀錄</h2>
+    <div class="ses-filter" style="margin:0">
+      <button class="sf-btn${myRegsFilter==='upcoming'?' act':''}" onclick="setMyRegsFilter('upcoming',this)">即將到來</button>
+      <button class="sf-btn${myRegsFilter==='history'?' act':''}" onclick="setMyRegsFilter('history',this)">歷史紀錄</button>
+      <button class="sf-btn${myRegsFilter==='cancelled'?' act':''}" onclick="setMyRegsFilter('cancelled',this)">取消紀錄</button>
+    </div>
+  </div>
+  <div id="myregs-inner"><div class="loading"><div class="spinner"></div></div></div>`;
+  const inner=fd('myregs-inner');
+  try{
+    const today=new Date().toISOString().split('T')[0];
+    const oneMonthAgo=new Date();oneMonthAgo.setDate(oneMonthAgo.getDate()-30);
+    const oneMonthAgoStr=oneMonthAgo.toISOString().split('T')[0];
+    let regs;
+    if(useLocal){regs=LOCAL.find('registrations','lineUserId',lineUser.lineUserId);}
+    else{const snap=await db.collection('registrations').where('lineUserId','==',lineUser.lineUserId).get();regs=[];snap.forEach(d=>regs.push({id:d.id,...d.data()}));}
+    let filtered;
+    if(myRegsFilter==='upcoming'){
+      filtered=regs.filter(r=>r.status!=='cancelled'&&r.sessionDate>=today);
+      filtered.sort((a,b)=>(a.sessionDate||'').localeCompare(b.sessionDate||''));
+    }else if(myRegsFilter==='cancelled'){
+      filtered=regs.filter(r=>r.status==='cancelled'&&r.sessionDate>=oneMonthAgoStr);
+      filtered.sort((a,b)=>(b.sessionDate||'').localeCompare(a.sessionDate||''));
+    }else{
+      filtered=regs.filter(r=>r.status!=='cancelled'&&r.sessionDate<today&&r.sessionDate>=oneMonthAgoStr);
+      filtered.sort((a,b)=>(b.sessionDate||'').localeCompare(a.sessionDate||''));
+    }
+    if(!filtered.length){
+      const msgs={upcoming:'目前沒有即將到來的報名',history:'近一個月無歷史報名紀錄',cancelled:'近一個月無取消紀錄'};
+      inner.innerHTML=`<div class="muted">${msgs[myRegsFilter]||msgs.upcoming}</div>`;return;
+    }
+    const bySession={};
+    filtered.forEach(r=>{if(!bySession[r.sessionId])bySession[r.sessionId]={sessionName:r.sessionName,sessionDate:r.sessionDate,regs:[]};bySession[r.sessionId].regs.push(r);});
+    inner.innerHTML=Object.values(bySession).map(grp=>`<div class="card mt8">
+      <div style="font-weight:700;margin-bottom:6px">${grp.sessionName||fmtDate(grp.sessionDate,currentLang)}</div>
+      ${grp.regs.map(r=>{
+        let badge;
+        if(r.status==='cancelled')badge=`<span class="badge b-closed">✕ 已取消</span>`;
+        else if(r.status==='confirmed')badge=`<span class="badge b-confirmed">✓ 正選</span>`;
+        else badge=`<span class="badge b-waitlist">⏳ 備取${r.waitlistOrder?'#'+r.waitlistOrder:''}`;
+        const selfTag=r.isSelf?'':' <span class="muted" style="font-size:.74rem">（代報）</span>';
+        return`<div class="slot-row"><span>${r.name}${selfTag} — ${r.slotName}</span><span>${badge} ${r.status!=='cancelled'?`<strong style="color:var(--primary)">NT$${r.fee}</strong>`:''} ${r.paid?'<span class="muted" style="font-size:.74rem">✅已付</span>':''}</span></div>`;
+      }).join('')}
+    </div>`).join('');
+  }catch(e){inner.innerHTML='<div class="al al-d">查詢失敗：'+e.message+'</div>';}
+}
+
+/* ============================================================
+   ADMIN — SESSIONS
+============================================================ */
+let currentSesFilter='ongoing';
+function setSesFilter(f,btn){currentSesFilter=f;document.querySelectorAll('#tab-sessions .sf-btn').forEach(b=>b.classList.remove('act'));if(btn)btn.classList.add('act');loadAdmSes();}
+
+async function loadAdmSes(){
+  await loadCfg();
+  const c=fd('adm-ses-list');c.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  try{
+    let sessions;
+    if(useLocal){sessions=LOCAL.getAll('sessions').sort((a,b)=>b.date.localeCompare(a.date));}
+    else{const snap=await db.collection('sessions').orderBy('date','desc').get();sessions=[];snap.forEach(d=>sessions.push({id:d.id,...d.data()}));}
+    sesCache=sessions;
+    const sel=fd('sel-ses');sel.innerHTML='<option value="">請選擇場次</option>'+sessions.map(s=>'<option value="'+s.id+'">'+fmtDate(s.date,'zh')+'  —  '+(s.name||'')+'</option>').join('');
+    const filtered=sessions.filter(s=>{const ended=isAutoEnded(s);if(currentSesFilter==='ongoing')return!ended;if(currentSesFilter==='ended')return ended;return true;});
+    if(!filtered.length){c.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text2)">此篩選條件下無場次</div>';return;}
+    const canSes=canEdit('sessions');
+    c.innerHTML=filtered.map(s=>renderAdmCard(s,canSes)).join('');
+    // render checkboxes state
+    updatePromoBar();
+  }catch(err){c.innerHTML='<div class="al al-d">載入失敗：'+err.message+'</div>';}
+}
+
+function renderAdmCard(s,canSes){
+  const eff=effStatus(s);let sbCls,sbLabel,nextBtn='';
+  if(eff==='ended'){sbCls='b-closed';sbLabel='已結束';}
+  else if(s.status==='open'){sbCls='b-open';sbLabel='開放中';nextBtn=canSes?`<button class="btn btn-s btn-sm" onclick="setSesStatus('${s.id}','hidden')">隱藏</button>`:'';}
+  else if(s.status==='hidden'){sbCls='b-hidden';sbLabel='已隱藏';nextBtn=canSes?`<button class="btn btn-s btn-sm" onclick="setSesStatus('${s.id}','open')">開放</button>`:'';}
+  else{sbCls='b-closed';sbLabel='已關閉';nextBtn=canSes?`<button class="btn btn-s btn-sm" onclick="setSesStatus('${s.id}','open')">開放</button>`:'';}
+  const typBadge=s.type==='coach'?'<span class="badge b-coach">教練場</span>':'<span class="badge b-open">零打</span>';
+  const slotsH=s.slots.map((sl,i)=>{
+    const avail=calcAvail(s,sl);const total=sl.quota===9999?(s.courts||1)*8:sl.quota;
+    return`<div class="slot-row"><div><span class="slot-dot" style="background:${sc(i)}"></span><strong>${sl.name}</strong>${sl.startTime?` <span class="muted">${sl.startTime}~${sl.endTime}</span>`:''}</div><div class="flex-gap"><span style="font-size:.8rem">${sl.registered||0}/${total} 人（剩 ${avail}）</span>${sl.fee?`<span style="color:var(--primary);font-size:.8rem;font-weight:700">NT$${sl.fee}</span>`:''}</div></div>`;
+  }).join('');
+  const checked=promoSelectedIds.has(s.id)?'checked':'';
+  const promoCheck=canSes?`<div class="ses-check-wrap" style="flex-shrink:0"><input type="checkbox" ${checked} onchange="togglePromoSelect('${s.id}',this.checked)" title="選取加入宣傳"></div>`:'';
+  return`<div class="card"><div class="card-hd">
+    ${promoCheck}
+    <div style="flex:1"><div class="card-title">${s.name||fmtDate(s.date,'zh')}</div><div class="muted" style="margin-top:2px">${fmtDate(s.date,'zh')} ${typBadge}${s.location?' · 📍'+s.location:''}</div></div>
+    <div class="flex-gap"><span class="badge ${sbCls}">${sbLabel}</span>${nextBtn}${canSes?`<button class="btn btn-ghost btn-sm" onclick="openEditSes('${s.id}')">✏️ 編輯</button>`:''} ${canSes?`<button class="btn btn-d btn-sm" onclick="deleteSes('${s.id}')">🗑 刪除</button>`:''}</div>
+  </div><div>${slotsH}</div></div>`;
+}
+
+function togglePromoSelect(id,checked){
+  if(checked)promoSelectedIds.add(id);else promoSelectedIds.delete(id);
+  updatePromoBar();
+}
+function updatePromoBar(){
+  const n=promoSelectedIds.size;
+  fd('promo-bar').style.display=n>0?'flex':'none';
+  fd('promo-count').textContent=n;
+}
+function clearPromoSelect(){promoSelectedIds.clear();loadAdmSes();}
+
+async function setSesStatus(id,status){
+  if(useLocal){LOCAL.update('sessions',id,{status});}else await db.collection('sessions').doc(id).update({status});
+  toast('狀態已更新','ok');loadAdmSes();
+}
+async function deleteSes(id){
+  const s=sesCache.find(x=>x.id===id);
+  const name=s?s.name||fmtDate(s.date,'zh'):id;
+  confirmDialog('確定刪除場次「'+name+'」？此操作無法復原。','確認刪除','btn-d',async()=>{
+    if(useLocal)LOCAL.delete('sessions',id);else await db.collection('sessions').doc(id).delete();
+    toast('已刪除','ok');loadAdmSes();
+  });
+}
+
+/* ── Promo blocks state（記錄每個可編輯區塊的內容）── */
+let promoBlocks=[];// [{type:'locked'|'editable', label, content, id}]
+
+async function openPromoModal(){
+  if(!promoSelectedIds.size){toast('請先勾選場次','err');return;}
+  const ids=[...promoSelectedIds];
+  const sessions=sesCache.filter(s=>ids.includes(s.id)).sort((a,b)=>a.date.localeCompare(b.date));
+  // 確保 cfg 最新
+  await loadCfg();
+  const singleStat=cfg.promoSingleStat!=null?cfg.promoSingleStat:PROMO_DEFAULTS.singleStat;
+  const singleFooter=cfg.promoSingleFooter!=null?cfg.promoSingleFooter:PROMO_DEFAULTS.singleFooter;
+  const multiHeader=cfg.promoMultiHeader!=null?cfg.promoMultiHeader:PROMO_DEFAULTS.multiHeader;
+  const multiFooter=cfg.promoMultiFooter!=null?cfg.promoMultiFooter:PROMO_DEFAULTS.multiFooter;
+
+  promoBlocks=[];
+
+  if(sessions.length===1){
+    const s=sessions[0];
+    // ── 鎖定：場次基本資料 ──
+    const nonCombo=s.slots.filter(sl=>!sl.combinedWith||!sl.combinedWith.length);
+    const combo=s.slots.filter(sl=>sl.combinedWith&&sl.combinedWith.length);
+    let lockedInfo='';
+    lockedInfo+=fmtDateShort(s.date);
+    if(s.location)lockedInfo+='\n'+s.location;
+    lockedInfo+='\n';
+    [...nonCombo,...combo].forEach(sl=>{
+      const avail=calcAvail(s,sl);
+      const isCombo=sl.combinedWith&&sl.combinedWith.length;
+      lockedInfo+=`${sl.name}   ${sl.startTime||''}${sl.endTime?'~'+sl.endTime:''}`;
+      if(!isCombo)lockedInfo+=`  （剩 ${avail} 名）`;
+      lockedInfo+='\n';
+    });
+    lockedInfo+='\n';
+    // 費用說明（鎖定）
+    const feeGroups={};
+    nonCombo.forEach(sl=>{const k=sl.fee||0;if(!feeGroups[k])feeGroups[k]=[];feeGroups[k].push(sl.name);});
+    const feeLines=Object.entries(feeGroups).map(([fee,names])=>`${names.join('、')}各 ${fee}元`);
+    combo.forEach(sl=>{if(sl.fee)feeLines.push(`${sl.name} ${sl.fee}元`);});
+    if(feeLines.length)lockedInfo+=feeLines.join('\n')+'\n';
+
+    promoBlocks.push({type:'locked',label:'🔒 場次資料（自動帶入，不可編輯）',content:lockedInfo});
+
+    // ── 可編輯：統計說明行（來自設定，可臨時修改）──
+    promoBlocks.push({type:'editable',label:'✏️ 統計說明行（可修改）',id:'promo-edit-stat',content:singleStat});
+
+    // ── 可編輯：場次備註（合併系統全域備註 + 此場次 description）──
+    const sesNote=s.description||'';
+    const combinedNote=sesNote;// 場次自帶備註
+    promoBlocks.push({type:'editable',label:'✏️ 場次備註／宣傳說明（可修改）',id:'promo-edit-note',content:combinedNote});
+
+    // ── 可編輯：固定結尾（來自設定）──
+    promoBlocks.push({type:'editable',label:'✏️ 固定結尾（來自設定，可臨時修改）',id:'promo-edit-footer',content:singleFooter});
+
+  }else{
+    // 多場次
+    // ── 可編輯：標題列 ──
+    promoBlocks.push({type:'editable',label:'✏️ 標題列（可修改）',id:'promo-edit-header',content:multiHeader});
+
+    // ── 鎖定：各場次名額資料 ──
+    let lockedMulti='';
+    sessions.forEach(s=>{
+      lockedMulti+='━━━━━━━━━━\n';
+      lockedMulti+=`${fmtDateShort(s.date)} ${s.name||''}${s.location?' '+s.location:''}\n`;
+      const openSlots=s.slots.filter(sl=>{
+        if(sl.combinedWith&&sl.combinedWith.length)return false;
+        const avail=calcAvail(s,sl);return avail>0;
+      });
+      if(!openSlots.length){lockedMulti+='（已滿）\n';}
+      else{openSlots.forEach(sl=>{const avail=calcAvail(s,sl);lockedMulti+=`${sl.name}|${sl.startTime||''}${sl.endTime?'–'+sl.endTime:''}  尚有${avail}位\n`;});}
+    });
+    lockedMulti+='━━━━━━━━━━';
+
+    promoBlocks.push({type:'locked',label:'🔒 場次名額資料（自動帶入，不可編輯）',content:lockedMulti});
+
+    // ── 可編輯：各場次個別備註合併（自動帶入場次 description，可補充）──
+    const sesNotes=sessions.filter(s=>s.description).map(s=>`【${fmtDateShort(s.date)}】${s.description}`).join('\n');
+    promoBlocks.push({type:'editable',label:'✏️ 場次備註（自動帶入各場次說明，可修改）',id:'promo-edit-notes',content:sesNotes});
+
+    // ── 可編輯：固定結尾 ──
+    promoBlocks.push({type:'editable',label:'✏️ 固定結尾（可修改）',id:'promo-edit-footer',content:multiFooter});
+  }
+
+  renderPromoBlocks();
+  om('mo-promo');
+}
+
+function renderPromoBlocks(){
+  const container=fd('promo-blocks');
+  container.innerHTML=promoBlocks.map((b,i)=>{
+    if(b.type==='locked'){
+      return`<div class="promo-block">
+        <div class="promo-block-hd"><span>${b.label}</span><span>🔒</span></div>
+        <div class="promo-block-locked-body">${b.content.replace(/</g,'&lt;')}</div>
+      </div>`;
+    }else{
+      return`<div class="promo-block">
+        <div class="promo-block-hd"><span>${b.label}</span><span>✏️</span></div>
+        <textarea id="${b.id}" oninput="updatePromoBlock(${i},this.value)">${b.content.replace(/</g,'&lt;')}</textarea>
+      </div>`;
+    }
+  }).join('');
+}
+
+function updatePromoBlock(i,val){
+  if(promoBlocks[i])promoBlocks[i].content=val;
+}
+
+function copyPromo(){
+  // 組合所有區塊內容
+  const text=promoBlocks.map(b=>{
+    if(b.type==='editable'){
+      // 從 DOM 讀取最新值
+      const el=fd(b.id);
+      return el?el.value:b.content;
+    }
+    return b.content;
+  }).filter(t=>t.trim()).join('\n');
+
+  const ta=document.createElement('textarea');
+  ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');toast('已複製到剪貼板 📋','ok');}
+  catch(e){navigator.clipboard.writeText(text).then(()=>toast('已複製到剪貼板 📋','ok')).catch(()=>toast('複製失敗，請手動選取複製','err'));}
+  document.body.removeChild(ta);
+}
+
+/* ── Session Modal ── */
+function onSesTypeChange(){
+  const type=fd('sm-type').value;
+  const defaultFee=type==='coach'?(cfg.coachFee||350):(cfg.casualFee||230);
+  // 新增模式：直接覆蓋；編輯模式：也更新（使用者切換類型視為有意調整）
+  document.querySelectorAll('.slot-fee').forEach(el=>{el.value=defaultFee;});
+  if(fd('ss-fee'))fd('ss-fee').value=defaultFee;
+}
+function onSlotModeChange(){const m=fd('sm-slot-mode').value==='multi';fd('sm-multi-wrap').style.display=m?'':'none';fd('sm-single-wrap').style.display=m?'none':'';}
+function autoEndTime(){const v=fd('ss-start').value;if(!v)return;const[h,m]=v.split(':').map(Number);fd('ss-end').value=String(Math.min(h+2,23)).padStart(2,'0')+':'+String(m).padStart(2,'0');}
+
+function openNewSes(){
+  editSesId=null;fd('mo-ses-title').textContent='新增場次';
+  fd('sm-date').value='';fd('sm-type').value='casual';fd('sm-name').value='';fd('sm-loc').value='';fd('sm-courts').value=1;fd('sm-visible').value='open';fd('sm-desc').value='';
+  fd('sm-slot-mode').value='multi';onSlotModeChange();fd('sm-slots-c').innerHTML='';slotCtr=0;
+  addSlotRow();  // add one default slot with default fee
+  fd('ss-start').value='';fd('ss-end').value='';
+  // pre-fill fee
+  fd('ss-fee').value=cfg.casualFee||230;
+  om('mo-ses');
+}
+
+async function openEditSes(id){
+  editSesId=id;fd('mo-ses-title').textContent='編輯場次';
+  let s;
+  if(useLocal){s=LOCAL.getAll('sessions').find(x=>x.id===id);}
+  else{const snap=await db.collection('sessions').doc(id).get();s=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!s)return;
+  fd('sm-date').value=s.date;fd('sm-type').value=s.type;fd('sm-name').value=s.name||'';fd('sm-loc').value=s.location||'';fd('sm-courts').value=s.courts||1;fd('sm-visible').value=s.status||'open';fd('sm-desc').value=s.description||'';
+  if(s.slotMode==='single'){
+    fd('sm-slot-mode').value='single';onSlotModeChange();
+    const sl=s.slots[0]||{};
+    fd('ss-start').value=sl.startTime||'';fd('ss-end').value=sl.endTime||'';fd('ss-fee').value=sl.fee||'';
+    if(sl.quotaOverride){fd('ss-quota-mode').value='manual';fd('ss-quota-wrap').style.display='block';fd('ss-quota').value=sl.quotaOverride;}
+  }else{
+    fd('sm-slot-mode').value='multi';onSlotModeChange();fd('sm-slots-c').innerHTML='';slotCtr=0;s.slots.forEach(sl=>addSlotRow(sl));
+  }
+  om('mo-ses');
+}
+
+function addSlotRow(slot){
+  const id='slot_'+(slotCtr++);const c=fd('sm-slots-c');const div=document.createElement('div');div.id='sr-'+id;div.className='slot-build-row';
+  const isComb=slot&&slot.combinedWith&&slot.combinedWith.length>0;
+  // default fee from cfg
+  const defaultFee=slot?slot.fee:(fd('sm-type')&&fd('sm-type').value==='coach'?(cfg.coachFee||350):(cfg.casualFee||230));
+  div.innerHTML=`<div class="slot-row-grid">
+    <div class="fg" style="margin:0"><label class="fl">時段名稱</label><input class="fc slot-name" placeholder="A時段" value="${slot&&slot.name?slot.name:''}"></div>
+    <div class="fg" style="margin:0"><label class="fl">開始</label><input type="time" class="fc slot-start" value="${slot&&slot.startTime?slot.startTime:''}" onchange="autoSlotEnd(this)"></div>
+    <div class="fg" style="margin:0"><label class="fl">結束</label><input type="time" class="fc slot-end" value="${slot&&slot.endTime?slot.endTime:''}"></div>
+    <button class="rm-btn" onclick="fd('sr-${id}').remove()">✕</button>
+  </div>
+  <div class="g2">
+    <div class="fg" style="margin:0"><label class="fl">報名費（元）</label><input type="number" class="fc slot-fee" placeholder="${defaultFee}" value="${slot&&slot.fee?slot.fee:defaultFee}"></div>
+    <div class="fg slot-quota-wrap" style="margin:0${isComb?';opacity:.4':''}"><label class="fl">名額（0=依場地自動）</label><input type="number" class="fc slot-quota" placeholder="自動" ${isComb?'disabled':''} value="${slot&&slot.quotaOverride&&!isComb?slot.quotaOverride:''}"></div>
+  </div>
+  <div class="fg" style="margin:0;margin-top:8px">
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;margin-bottom:5px">
+      <input type="checkbox" class="slot-is-combined" onchange="toggleCombined(this,'${id}')" style="accent-color:var(--primary)" ${isComb?'checked':''}><span>此為合併時段（如 C = A+B）</span>
+    </label>
+    <div class="slot-combined-opts" style="display:${isComb?'block':'none'};padding:9px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+      <div class="fl" style="margin-bottom:5px">勾選要合併的時段：</div>
+      <div class="combined-cbs"></div>
+      <div style="font-size:.75rem;color:var(--primary);margin-top:5px;font-weight:600">⚠️ 名額自動計算</div>
+    </div>
+  </div>`;
+  c.appendChild(div);
+  if(isComb)setTimeout(()=>rebuildCombCBs(div,slot.combinedWith),60);
+}
+function autoSlotEnd(input){const v=input.value;if(!v)return;const row=input.closest('.slot-build-row');const ei=row.querySelector('.slot-end');const[h,m]=v.split(':').map(Number);ei.value=String(Math.min(h+2,23)).padStart(2,'0')+':'+String(m).padStart(2,'0');}
+function toggleCombined(cb,slotId){const wrap=cb.closest('.slot-build-row');const opts=wrap.querySelector('.slot-combined-opts');const qw=wrap.querySelector('.slot-quota-wrap');const qi=wrap.querySelector('.slot-quota');opts.style.display=cb.checked?'block':'none';qw.style.opacity=cb.checked?'.4':'1';qi.disabled=cb.checked;if(cb.checked)rebuildCombCBs(wrap,[]);}
+function rebuildCombCBs(thisRow,pre){const cbDiv=thisRow.querySelector('.combined-cbs');cbDiv.innerHTML='';let added=0;document.querySelectorAll('#sm-slots-c .slot-build-row').forEach((row,idx)=>{if(row===thisRow)return;const ni=row.querySelector('.slot-name');const name=ni?ni.value||'（未命名）':'';const refId='slot_'+idx;const checked=pre&&pre.includes(refId);const lbl=document.createElement('label');lbl.style.cssText='display:flex;align-items:center;gap:5px;margin-bottom:4px;cursor:pointer;font-size:.8rem';lbl.innerHTML=`<input type="checkbox" class="combined-pick" data-refid="${refId}" style="accent-color:var(--primary)" ${checked?'checked':''}><span class="cn-lbl">${name}</span>`;cbDiv.appendChild(lbl);ni&&ni.addEventListener('input',()=>lbl.querySelector('.cn-lbl').textContent=ni.value||'（未命名）');added++;});if(!added)cbDiv.innerHTML='<div class="muted" style="font-size:.78rem">請先新增其他時段</div>';}
+
+async function saveSes(){
+  const date=fd('sm-date').value;if(!date){toast('請選擇日期','err');return;}
+  const type=fd('sm-type').value,name=fd('sm-name').value.trim(),loc=fd('sm-loc').value.trim(),desc=fd('sm-desc').value.trim();
+  const courts=parseInt(fd('sm-courts').value)||1,status=fd('sm-visible').value,slotMode=fd('sm-slot-mode').value;
+  let slots=[];
+  if(slotMode==='single'){
+    const st=fd('ss-start').value,et=fd('ss-end').value,fee=parseInt(fd('ss-fee').value)||0;
+    const isManual=fd('ss-quota-mode').value==='manual';
+    const quota=isManual?(parseInt(fd('ss-quota').value)||courts*8):courts*8;
+    slots=[{id:'slot_0',name:'報名',startTime:st,endTime:et,fee,quota,quotaOverride:isManual?quota:0,combinedWith:[],registered:0}];
+  }else{
+    const rows=fd('sm-slots-c').querySelectorAll('.slot-build-row');let valid=true;
+    rows.forEach((row,idx)=>{const n=row.querySelector('.slot-name').value.trim();const st=row.querySelector('.slot-start').value;const et=row.querySelector('.slot-end').value;const fee=parseInt(row.querySelector('.slot-fee').value)||0;const isComb=row.querySelector('.slot-is-combined').checked;const qo=isComb?0:(parseInt(row.querySelector('.slot-quota').value)||0);if(!n){valid=false;return;}let cw=[];if(isComb){row.querySelectorAll('.combined-pick:checked').forEach(cb=>cw.push(cb.dataset.refid));}slots.push({id:'slot_'+idx,name:n,startTime:st,endTime:et,fee,quota:isComb?9999:(qo||courts*8),quotaOverride:isComb?0:qo,combinedWith:cw,registered:0});});
+    if(!valid||!slots.length){toast('請填寫時段名稱','err');return;}
+  }
+  const data={date,type,name:name||(type==='coach'?'教練場':'零打')+' '+fmtDate(date,'zh'),location:loc,description:desc,courts,slots,status,slotMode,updatedAt:Date.now()};
+  if(editSesId){
+    const ex=sesCache.find(x=>x.id===editSesId);
+    if(ex)data.slots=slots.map(sl=>{const e=ex.slots.find(x=>x.id===sl.id);return{...sl,registered:e?e.registered||0:0};});
+    if(useLocal)LOCAL.update('sessions',editSesId,data);else await db.collection('sessions').doc(editSesId).update(data);
+    toast('場次已更新','ok');
+  }else{
+    data.createdAt=Date.now();
+    if(useLocal)LOCAL.push('sessions',data);else await db.collection('sessions').add(data);
+    toast('場次已新增','ok');
+  }
+  cm('mo-ses');loadAdmSes();
+}
+
+/* ============================================================
+   REGISTRATION LIST (V4.1 fixes)
+============================================================ */
+async function loadRegList(){const sid=fd('sel-ses').value,area=fd('reg-list-area');if(!sid){area.innerHTML='';return;}rosterSesId=sid;rosterMode='all';area.innerHTML='<div class="loading"><div class="spinner"></div></div>';await renderRoster(sid,'all',area);}
+
+async function renderRoster(sid,mode,area){
+  const s=sesCache.find(x=>x.id===sid);
+  let allRegs;
+  if(useLocal){allRegs=LOCAL.find('registrations','sessionId',sid);}
+  else{const snap=await db.collection('registrations').where('sessionId','==',sid).get();allRegs=[];snap.forEach(d=>allRegs.push({id:d.id,...d.data()}));}
+  allRegs.sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+  const active=allRegs.filter(r=>r.status!=='cancelled');
+  const confirmed=active.filter(r=>r.status==='confirmed');
+  const waitlist=active.filter(r=>r.status==='waitlist').sort((a,b)=>(a.waitlistOrder||0)-(b.waitlistOrder||0));
+  const paid=confirmed.filter(r=>r.paid);
+  const setQ=s?(s.slots||[]).filter(sl=>sl.quota!==9999).reduce((a,sl)=>a+sl.quota,0):0;
+  const isOver=confirmed.length>setQ;
+  const readonly=!canEdit('regs');
+
+  // view mode pills
+  let vmHtml='<div class="vmpills"><button class="vmp'+(mode==='all'?' act':'')+'" onclick="setRosterMode(\'all\')" style="'+(mode==='all'?'background:#555;border-color:#555':'')+'">完整名單</button>';
+  if(s)s.slots.forEach((sl,i)=>{const c=sc(i);const isA=mode===sl.id;vmHtml+=`<button class="vmp${isA?' act':''}" onclick="setRosterMode('${sl.id}')" style="${isA?'background:'+c+';border-color:'+c:'border-color:'+c+';color:'+c}">${sl.name}</button>`;});
+  vmHtml+='</div>';
+
+  const addCustomBtn=!readonly?`<button class="btn btn-p btn-sm" style="margin-left:auto" onclick="openCustomModal('${sid}')">⚙️ 新增客製</button>`:'';
+  const sum=`<div class="roster-summary">正選 <span class="rs-num">${confirmed.length}</span>${isOver?` <span style="color:var(--danger)">(超收 ${confirmed.length-setQ})</span>`:''} · 備取 <span class="rs-num">${waitlist.length}</span> · 已付 <span class="rs-num" style="color:var(--success)">${paid.length}</span> · 設定名額 ${setQ}${addCustomBtn}</div>`;
+
+  let displayRegs;
+  if(mode==='all'){displayRegs=active;}
+  else{
+    // 查看 A/B 時段：顯示直接報A/B的人 + 報C(合併時段包含此時段)的人
+    // 查看 C 時段：顯示直接報C的人
+    const viewSlot=s&&s.slots.find(x=>x.id===mode);
+    const isComboSlot=viewSlot&&viewSlot.combinedWith&&viewSlot.combinedWith.length>0;
+    if(isComboSlot){
+      // 查看合併時段(C)：只顯示直接報C的人
+      displayRegs=active.filter(r=>r.primarySlotId===mode);
+    }else{
+      // 查看普通時段(A/B)：顯示直接報此時段 + 報任何以此時段為子時段的合併時段
+      displayRegs=active.filter(r=>{
+        if(r.primarySlotId===mode)return true;
+        const rSlot=s&&s.slots.find(x=>x.id===r.primarySlotId);
+        return rSlot&&rSlot.combinedWith&&rSlot.combinedWith.includes(mode);
+      });
+    }
+  }
+
+  const tbl=(rows,title,color)=>{if(!rows.length)return'';return`<div style="font-weight:700;font-size:.84rem;margin:13px 0 7px;color:${color}">${title} (${rows.length})</div><div class="tw"><table><thead><tr><th>姓名</th><th>時段</th><th>程度</th><th>費用</th><th>付款狀態</th><th>報名時間</th><th>操作</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;};
+
+  const mkRow=(r,isCf,isCancelled)=>{
+    const si=s?(s.slots||[]).findIndex(x=>x.id===r.primarySlotId):-1;
+    const wt=r.hasWarning?'<span class="warn-tag">⚠️</span>':'';
+    const srcTag=r.source==='custom'?'<span class="badge b-custom" style="font-size:.67rem">⚙️客製</span>':'';
+    const promotedTag=isCf&&r.promotedFromWaitlist?'<span class="badge b-promoted" style="font-size:.67rem">↑晉升</span>':'';
+    const wlTag=!isCf&&!isCancelled&&r.waitlistOrder!=null?`<span class="badge b-waitlist">備取#${r.waitlistOrder}</span>`:'';
+    const absentTag=r.absent?'<span class="badge b-absent" style="font-size:.67rem">缺席</span>':'';
+    const hasNote=r.note&&r.note.trim();
+    const noteTag=hasNote?`<span class="badge b-custom" style="font-size:.67rem;cursor:pointer;background:#F0F4FF;border-color:#C5D5FF;color:#3B5BDB" data-rid="${r.id}" title="${(r.note||'').replace(/"/g,'&quot;')}" onclick="showNotePopup(this)">📝 備註</span>`:'';
+    // 用 data-* 屬性傳值，避免姓名/場次名稱含特殊字元破壞 onclick 字串
+    const dId=`data-rid="${r.id}"`;
+    const dSid=`data-sid="${sid}"`;
+    const dSlot=`data-slotid="${r.primarySlotId}"`;
+
+    let pcell='';
+    if(!readonly&&!isCancelled){
+      if(r.paid){
+        pcell=`<span style="color:var(--success);font-size:.8rem;font-weight:600">✅ ${pmLabel(r.paymentMethod)}</span> <button class="btn btn-ghost btn-sm rw-undopay" style="font-size:.68rem;padding:3px 7px" ${dId}>取消付款</button>`;
+      }else{
+        pcell=`<button class="btn btn-ok btn-sm rw-pay" ${dId}>收款</button>`;
+      }
+    }else if(r.paid){
+      pcell=`<span style="color:var(--success);font-size:.8rem;font-weight:600">✅ ${pmLabel(r.paymentMethod)}</span>`;
+    }
+
+    let ops='';
+    if(!readonly&&!isCancelled){
+      if(r.absent){
+        ops+=`<button class="btn btn-ghost btn-sm rw-unabsent" ${dId}>取消缺席</button> `;
+      }else{
+        ops+=`<button class="btn btn-ghost btn-sm rw-absent" ${dId}>缺席</button> `;
+      }
+      if(!isCf){
+        ops+=`<button class="btn btn-ok btn-sm rw-promote" ${dId} ${dSid} ${dSlot}>晉升</button> `;
+      }else if(r.promotedFromWaitlist){
+        ops+=`<button class="btn btn-w btn-sm rw-demote" ${dId} ${dSid} ${dSlot}>↓備取</button> `;
+      }
+      ops+=`<button class="btn btn-d btn-sm rw-cancel" ${dId} ${dSid}>取消</button> <button class="btn btn-w btn-sm rw-warn" ${dId} ${dSid}>警示</button>`;
+    }else if(!readonly&&isCancelled){
+      ops+=`<button class="btn btn-s btn-sm rw-restore" ${dId} ${dSid} ${dSlot}>還原報名</button>`;
+    }
+    const rowStyle=isCancelled?'opacity:.65;':'';
+    return`<tr style="${rowStyle}" data-name="${(r.name||'').replace(/"/g,'&quot;')}" data-sesname="${((s?s.name||s.date:'')||'').replace(/"/g,'&quot;')}" data-lineuid="${r.lineUserId||''}" data-phone="${r.mainPhone||''}" data-slotname="${(r.slotName||'').replace(/"/g,'&quot;')}" data-note="${(r.note||'').replace(/"/g,'&quot;')}"><td>${r.name} ${wt}${srcTag}${promotedTag}${wlTag}${absentTag} ${noteTag}<div style="font-size:.74rem;color:var(--text2)">${r.lineDisplayName?r.lineDisplayName+' · ':''}${r.mainPhone||''}</div></td><td><span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}</td><td>${r.level?r.level+'級':'—'}</td><td style="color:var(--primary);font-weight:700">NT$${r.fee}</td><td>${pcell}</td><td style="font-size:.74rem;color:var(--text2)">${fmtTs(r.timestamp)}</td><td style="white-space:nowrap">${ops}</td></tr>`;
+  };
+
+  // 取消名單（全部取消，不論時段篩選）
+  const cancelledRegs=allRegs.filter(r=>r.status==='cancelled').sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+
+  // Build waitlist with correct display index
+  const wlRows=displayRegs.filter(r=>r.status==='waitlist').sort((a,b)=>(a.waitlistOrder||0)-(b.waitlistOrder||0));
+
+  area.innerHTML=vmHtml+sum+
+    tbl(displayRegs.filter(r=>r.status==='confirmed').map(r=>mkRow(r,true,false)),'✓ 正選','var(--success)')+
+    tbl(wlRows.map(r=>mkRow(r,false,false)),'⏳ 備取','var(--warn)')+
+    tbl(cancelledRegs.map(r=>mkRow(r,false,true)),'✕ 取消名單','var(--text3)');
+
+  // 事件委派：統一處理所有報名名單按鈕，避免 inline onclick 字串引號問題
+  area.onclick=function(e){
+    const btn=e.target.closest('button');if(!btn)return;
+    const rid=btn.dataset.rid;
+    const bsid=btn.dataset.sid;
+    const slotid=btn.dataset.slotid;
+    const tr=btn.closest('tr');
+    const name=tr?tr.dataset.name:'';
+    const sesname=tr?tr.dataset.sesname:'';
+    const lineuid=tr?tr.dataset.lineuid:'';
+    const phone=tr?tr.dataset.phone:'';
+    const slotname=tr?tr.dataset.slotname:'';
+    if(btn.classList.contains('rw-pay'))       {openPayModal(rid,name,slotname);}
+    else if(btn.classList.contains('rw-undopay'))  {undoPay(rid);}
+    else if(btn.classList.contains('rw-absent'))   {markAbsent(rid);}
+    else if(btn.classList.contains('rw-unabsent')) {unmarkAbsent(rid);}
+    else if(btn.classList.contains('rw-promote'))  {promoteWL(rid,bsid,slotid);}
+    else if(btn.classList.contains('rw-demote'))   {openDemoteModal(rid,name,bsid,slotid);}
+    else if(btn.classList.contains('rw-cancel'))   {cancelReg(rid,bsid);}
+    else if(btn.classList.contains('rw-warn'))     {openWarnModal(name,sesname,lineuid,phone);}
+    else if(btn.classList.contains('rw-restore'))  {restoreReg(rid,bsid,slotid);}
+  };
+}
+
+function setRosterMode(mode){rosterMode=mode;renderRoster(rosterSesId,mode,fd('reg-list-area'));}
+
+/* ── Promote waitlist ── */
+async function promoteWL(regId,sid,slotId){
+  // Allow even if over capacity (admin override)
+  confirmDialog('確定晉升為正選？（此操作允許超額）','確認晉升','btn-ok',async()=>{
+  if(useLocal){
+    LOCAL.update('registrations',regId,{status:'confirmed',waitlistOrder:null,promotedFromWaitlist:true});
+    const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+    if(si>=0){const ses=LOCAL.getAll('sessions')[si];ses.slots=ses.slots.map(sl=>sl.id===slotId?{...sl,registered:(sl.registered||0)+1}:sl);LOCAL._store['sessions'][si]=ses;}
+    // Re-number remaining waitlist
+    await reNumberWaitlist(sid,slotId);
+  }else{
+    await db.collection('registrations').doc(regId).update({status:'confirmed',waitlistOrder:null,promotedFromWaitlist:true});
+    const sSnap=await db.collection('sessions').doc(sid).get();
+    if(sSnap.exists){const upd=sSnap.data().slots.map(sl=>sl.id===slotId?{...sl,registered:(sl.registered||0)+1}:sl);await db.collection('sessions').doc(sid).update({slots:upd});}
+    await reNumberWaitlist(sid,slotId);
+  }
+  toast('已晉升為正選','ok');renderRoster(sid,rosterMode,fd('reg-list-area'));loadAdmSes();
+  });
+}
+
+async function reNumberWaitlist(sid,slotId){
+  let wl;
+  if(useLocal){
+    wl=LOCAL.find('registrations','sessionId',sid).filter(r=>r.primarySlotId===slotId&&r.status==='waitlist').sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+    wl.forEach((r,i)=>LOCAL.update('registrations',r.id,{waitlistOrder:i+1}));
+  }else{
+    const snap=await db.collection('registrations').where('sessionId','==',sid).where('primarySlotId','==',slotId).where('status','==','waitlist').get();
+    wl=[];snap.forEach(d=>wl.push({id:d.id,...d.data()}));
+    wl.sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+    const batch=db.batch();
+    wl.forEach((r,i)=>batch.update(db.collection('registrations').doc(r.id),{waitlistOrder:i+1}));
+    await batch.commit();
+  }
+}
+
+/* ── Demote confirmed back to waitlist ── */
+function openDemoteModal(regId,name,sid,slotId){
+  demoteTarget={regId,name,sid,slotId};
+  fd('demote-info').textContent=`確定將「${name}」從正選移回備取名單？系統將根據報名時間自動排列備取順序。`;
+  om('mo-demote');
+}
+async function confirmDemote(){
+  if(!demoteTarget)return;
+  const{regId,name,sid,slotId}=demoteTarget;
+  // get timestamp of this reg to determine correct waitlist order
+  let reg;
+  if(useLocal){reg=LOCAL.find('registrations','sessionId',sid).find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg){toast('找不到報名記錄','err');cm('mo-demote');return;}
+
+  // count existing waitlist with earlier timestamp
+  let wl;
+  if(useLocal){
+    wl=LOCAL.find('registrations','sessionId',sid).filter(r=>r.primarySlotId===slotId&&r.status==='waitlist').sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+  }else{
+    const snap=await db.collection('registrations').where('sessionId','==',sid).where('primarySlotId','==',slotId).where('status','==','waitlist').get();
+    wl=[];snap.forEach(d=>wl.push({id:d.id,...d.data()}));
+    wl.sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+  }
+  // find position based on original timestamp
+  const pos=wl.findIndex(r=>(r.timestamp||0)>(reg.timestamp||0));
+  const newOrder=pos===-1?wl.length+1:pos+1;
+
+  if(useLocal){
+    LOCAL.update('registrations',regId,{status:'waitlist',waitlistOrder:newOrder,promotedFromWaitlist:false});
+    // shift others
+    wl.slice(newOrder-1).forEach((r,i)=>LOCAL.update('registrations',r.id,{waitlistOrder:newOrder+1+i}));
+    // decrement session slot count
+    const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+    if(si>=0){const ses=LOCAL.getAll('sessions')[si];ses.slots=ses.slots.map(sl=>sl.id===slotId?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);LOCAL._store['sessions'][si]=ses;}
+  }else{
+    await db.collection('registrations').doc(regId).update({status:'waitlist',waitlistOrder:newOrder,promotedFromWaitlist:false});
+    const sSnap=await db.collection('sessions').doc(sid).get();
+    if(sSnap.exists){const upd=sSnap.data().slots.map(sl=>sl.id===slotId?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);await db.collection('sessions').doc(sid).update({slots:upd});}
+    await reNumberWaitlist(sid,slotId);
+  }
+  toast(`「${name}」已放回備取名單，排序 #${newOrder}`,'ok');
+  cm('mo-demote');demoteTarget=null;
+  renderRoster(sid,rosterMode,fd('reg-list-area'));loadAdmSes();
+}
+
+function showNotePopup(el){
+  const note=el.title||el.dataset.note||'';
+  if(!note)return;
+  // 移除舊的 popup
+  const old=document.getElementById('note-popup');if(old)old.remove();
+  const popup=document.createElement('div');
+  popup.id='note-popup';
+  popup.style.cssText='position:fixed;z-index:9999;background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,.15);max-width:280px;font-size:.84rem;line-height:1.6;color:var(--text)';
+  popup.innerHTML=`<div style="font-weight:700;margin-bottom:6px;font-size:.8rem;color:var(--text2)">📝 報名備註</div><div>${note.replace(/\n/g,'<br>')}</div><div style="margin-top:10px;text-align:right"><button onclick="document.getElementById('note-popup').remove()" class="btn btn-ghost btn-sm">關閉</button></div>`;
+  // 定位在點擊元素附近
+  const rect=el.getBoundingClientRect();
+  const top=Math.min(rect.bottom+8, window.innerHeight-180);
+  const left=Math.min(rect.left, window.innerWidth-300);
+  popup.style.top=top+'px';popup.style.left=Math.max(8,left)+'px';
+  document.body.appendChild(popup);
+  // 點其他地方關閉
+  setTimeout(()=>document.addEventListener('click',function h(e){if(!popup.contains(e.target)){popup.remove();document.removeEventListener('click',h);}},),100);
+}
+function openPayModal(id,name,slot){payTarget=id;fd('pay-info').textContent=name+' — '+slot;fd('pay-method').value='cash';fd('pay-other-w').style.display='none';om('mo-pay');}
+async function confirmPay(){let m=fd('pay-method').value;if(m==='other')m=fd('pay-other').value||'other';if(useLocal)LOCAL.update('registrations',payTarget,{paid:true,paymentMethod:m});else await db.collection('registrations').doc(payTarget).update({paid:true,paymentMethod:m,paidAt:Date.now()});cm('mo-pay');toast('收款已記錄','ok');renderRoster(rosterSesId,rosterMode,fd('reg-list-area'));}
+
+async function undoPay(regId){
+  confirmDialog('確定取消此付款記錄？','確認取消','btn-d',async()=>{
+    if(useLocal)LOCAL.update('registrations',regId,{paid:false,paymentMethod:'',paidAt:null});
+    else await db.collection('registrations').doc(regId).update({paid:false,paymentMethod:'',paidAt:null});
+    toast('付款記錄已取消','ok');renderRoster(rosterSesId,rosterMode,fd('reg-list-area'));
+  });
+}
+
+async function cancelReg(regId,sid){
+  confirmDialog('確定取消此報名？','確認取消','btn-d',async()=>{
+  let reg;
+  if(useLocal){reg=LOCAL.find('registrations','sessionId',sid).find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg)return;
+  if(useLocal)LOCAL.update('registrations',regId,{status:'cancelled',cancelledAt:Date.now()});
+  else await db.collection('registrations').doc(regId).update({status:'cancelled',cancelledAt:Date.now()});
+  // Decrement slot count if was confirmed
+  if(reg.status==='confirmed'){
+    const targetSlot=reg.primarySlotId;
+    if(useLocal){
+      const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+      if(si>=0){const ses=LOCAL.getAll('sessions')[si];ses.slots=ses.slots.map(sl=>sl.id===targetSlot?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);LOCAL._store['sessions'][si]=ses;}
+    }else{
+      const sSnap=await db.collection('sessions').doc(sid).get();
+      if(sSnap.exists){const upd=sSnap.data().slots.map(sl=>sl.id===targetSlot?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);await db.collection('sessions').doc(sid).update({slots:upd});}
+    }
+  }
+  // Re-number waitlist if cancelled was confirmed
+  if(reg.status==='confirmed')await reNumberWaitlist(sid,reg.primarySlotId);
+  toast('已取消報名','ok');renderRoster(sid,rosterMode,fd('reg-list-area'));loadAdmSes();
+  });
+}
+
+async function restoreReg(regId,sid,slotId){
+  confirmDialog('確定還原此報名？系統將依目前名額決定為正選或備取。','確認還原','btn-s',async()=>{
+  let reg;
+  if(useLocal){reg=LOCAL.find('registrations','sessionId',sid).find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg)return;
+  // 查目前對應時段的名額
+  let s;
+  if(useLocal){s=LOCAL.getAll('sessions').find(x=>x.id===sid);}
+  else{const sSnap=await db.collection('sessions').doc(sid).get();s=sSnap.exists?{id:sSnap.id,...sSnap.data()}:null;}
+  const sl=s&&(s.slots||[]).find(x=>x.id===slotId);
+  const avail=sl?calcAvail(s,sl):0;
+  const newStatus=avail>0?'confirmed':'waitlist';
+  let waitOrder=null;
+  if(newStatus==='waitlist'){
+    let wl;
+    if(useLocal){wl=LOCAL.find('registrations','sessionId',sid).filter(r=>r.primarySlotId===slotId&&r.status==='waitlist');}
+    else{const snap=await db.collection('registrations').where('sessionId','==',sid).where('primarySlotId','==',slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
+    waitOrder=wl.length+1;
+  }
+  const upd={status:newStatus,waitlistOrder:waitOrder,cancelledAt:null,restoredAt:Date.now()};
+  if(useLocal)LOCAL.update('registrations',regId,upd);
+  else await db.collection('registrations').doc(regId).update(upd);
+  // 若還原為正選，增加 registered
+  if(newStatus==='confirmed'){
+    if(useLocal){
+      const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+      if(si>=0){const ses=LOCAL.getAll('sessions')[si];ses.slots=ses.slots.map(sl=>sl.id===slotId?{...sl,registered:(sl.registered||0)+1}:sl);LOCAL._store['sessions'][si]=ses;}
+    }else{
+      const sSnap=await db.collection('sessions').doc(sid).get();
+      if(sSnap.exists){const upd2=sSnap.data().slots.map(sl=>sl.id===slotId?{...sl,registered:(sl.registered||0)+1}:sl);await db.collection('sessions').doc(sid).update({slots:upd2});}
+    }
+  }
+  toast(`已還原為${newStatus==='confirmed'?'正選':'備取 #'+waitOrder}`,'ok');
+  renderRoster(sid,rosterMode,fd('reg-list-area'));loadAdmSes();
+  });
+}
+
+async function markAbsent(regId){
+  if(useLocal)LOCAL.update('registrations',regId,{absent:true});
+  else await db.collection('registrations').doc(regId).update({absent:true});
+  toast('已標記缺席','ok');renderRoster(rosterSesId,rosterMode,fd('reg-list-area'));
+}
+async function unmarkAbsent(regId){
+  if(useLocal)LOCAL.update('registrations',regId,{absent:false});
+  else await db.collection('registrations').doc(regId).update({absent:false});
+  toast('已取消缺席標記','ok');renderRoster(rosterSesId,rosterMode,fd('reg-list-area'));
+}
+
+/* ── Custom Add ── */
+function onCuSourceChange(){
+  const v=fd('cu-source').value;
+  const needUsername=['LINE群組','LINE社群','官方LINE','Facebook'].includes(v);
+  fd('cu-username-wrap').style.display=needUsername?'block':'none';
+  fd('cu-source-other-wrap').style.display=v==='other'?'block':'none';
+}
+function openCustomModal(sid){
+  customSesId=sid;const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  fd('cu-name').value='';fd('cu-phone').value='';fd('cu-source').value='';fd('cu-level').value='';fd('cu-note').value='';
+  fd('cu-username-wrap').style.display='none';fd('cu-source-other-wrap').style.display='none';
+  const sel=fd('cu-slot');sel.innerHTML=s.slots.map(sl=>'<option value="'+sl.id+'">'+sl.name+'</option>').join('');
+  if(s.slots[0])fd('cu-fee').value=s.slots[0].fee||cfg.casualFee||230;
+  om('mo-custom');
+}
+async function saveCustom(){
+  const name=fd('cu-name').value.trim();if(!name){toast('請填寫姓名','err');return;}
+  const sid=customSesId;const s=sesCache.find(x=>x.id===sid);const slotId=fd('cu-slot').value;
+  const sl=s&&s.slots.find(x=>x.id===slotId);const fee=parseInt(fd('cu-fee').value)||0;
+  const phone=normalizePhone(fd('cu-phone').value);
+  const srcVal=fd('cu-source').value;
+  const isLineOrFb=['LINE群組','LINE社群','官方LINE','Facebook'].includes(srcVal);
+  const source=srcVal==='other'?(fd('cu-source-other').value||srcVal):(srcVal||'');
+  const username=isLineOrFb?(fd('cu-username').value||''):'';
+  const ts=Date.now();
+  const doc={sessionId:sid,sessionName:s?s.name||fmtDate(s.date,'zh'):'',sessionDate:s?s.date:'',
+    lineUserId:null,mainPhone:phone,name,contactSource:source,sourceUsername:username,
+    level:fd('cu-level').value,note:fd('cu-note').value,language:'zh',slotIds:[slotId],
+    primarySlotId:slotId,slotName:sl?sl.name:'',fee,status:'confirmed',waitlistOrder:null,
+    paid:false,paymentMethod:'',absent:false,source:'custom',isSelf:true,
+    customAddedBy:me?me.username:'',hasWarning:false,timestamp:ts,promotedFromWaitlist:false};
+  if(useLocal)LOCAL.push('registrations',doc);else await db.collection('registrations').add(doc);
+  if(s){
+    if(useLocal){const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>x.id===slotId?{...x,registered:(x.registered||0)+1}:x);}}
+    else{const sSnap=await db.collection('sessions').doc(sid).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>x.id===slotId?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(sid).update({slots:upd});}}
+  }
+  cm('mo-custom');toast('客製人員已新增','ok');renderRoster(sid,rosterMode,fd('reg-list-area'));
+  // 推播通知（客製新增也通知管理員，標示來源為管理員手動）
+  if(s){
+    const customResult=[{name,slotName:sl?sl.name:'',fee,status:'confirmed',waitOrder:null}];
+    sendRegNotify(s,customResult,`${name}（管理員手動新增）`);
+  }
+}
+
+/* ============================================================
+   WARNINGS (lineUserId-based)
+============================================================ */
+function openWarnModal(name,ses,lineUserId,phone){
+  fd('w-name').value=name||'';fd('w-ses').value=ses||'';fd('w-phone').value=lineUserId||phone||'';fd('w-reason').value='unpaid';fd('w-note').value='';
+  om('mo-warn');
+}
+async function saveWarn(){
+  const name=fd('w-name').value.trim();if(!name){toast('請填寫姓名','err');return;}
+  const lineUidOrPhone=fd('w-phone').value.trim();// stored as lineUserId when available
+  const rm={unpaid:'未付款',absent:'缺席未通知',late_cancel:'未提前請假',other:'其他'};
+  const r=fd('w-reason').value;
+  const doc={name,lineUserId:lineUidOrPhone,phone:lineUidOrPhone,reason:r,reasonText:rm[r],note:fd('w-note').value,session:fd('w-ses').value,active:true,createdAt:Date.now()};
+  if(useLocal)LOCAL.push('warnings',doc);else await db.collection('warnings').add(doc);
+  // Also update buddy record
+  if(lineUidOrPhone){
+    const warnNote=rm[r]+(fd('w-note').value?' — '+fd('w-note').value:'');
+    if(useLocal){
+      const existing=LOCAL.getAll('buddies').find(b=>b.lineUserId===lineUidOrPhone)||LOCAL.getAll('buddies').find(b=>b.phone===lineUidOrPhone);
+      if(existing){
+        const history=existing.warnHistory||[];
+        history.push({reason:rm[r],note:fd('w-note').value,session:fd('w-ses').value,createdAt:Date.now()});
+        LOCAL.update('buddies',existing.id,{isWarned:true,warnReason:warnNote,warnHistory:history,updatedAt:Date.now()});
+      }
+    }else{
+      const snap=await db.collection('buddies').doc(lineUidOrPhone).get();
+      if(snap.exists){
+        const bData=snap.data();const history=bData.warnHistory||[];
+        history.push({reason:rm[r],note:fd('w-note').value,session:fd('w-ses').value,createdAt:Date.now()});
+        await db.collection('buddies').doc(lineUidOrPhone).update({isWarned:true,warnReason:warnNote,warnHistory:history,updatedAt:Date.now()});
+      }
+    }
+  }
+  cm('mo-warn');toast('警示已新增','ok');
+  if(fd('tab-buddies').style.display!=='none')loadBuddies();
+}
+
+/* ============================================================
+   BUDDIES (V4.1)
+============================================================ */
+let allBuddies=[],buddyFilterMode='normal';
+function setBuddyFilter(f,btn){buddyFilterMode=f;document.querySelectorAll('#tab-buddies .sf-btn').forEach(b=>b.classList.remove('act'));if(btn)btn.classList.add('act');renderBuddies();}
+function filterBuddies(){renderBuddies();}
+
+async function loadBuddies(){
+  const c=fd('buddies-list');c.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  try{
+    if(useLocal){allBuddies=LOCAL.getAll('buddies');}
+    else{
+      const snap=await db.collection('buddies').get();
+      allBuddies=[];snap.forEach(d=>allBuddies.push({id:d.id,...d.data()}));
+      allBuddies.sort((a,b)=>(b.lastReportedAt||0)-(a.lastReportedAt||0));
+    }
+    renderBuddies();
+  }catch(e){
+    const isPerm=e.code==='permission-denied'||e.message.toLowerCase().includes('permission');
+    c.innerHTML='<div class="al al-d"><strong>載入失敗：'+e.message+'</strong>'+(isPerm?'<br><br>⚠️ Firestore 安全規則未允許讀取球友資料。請前往 Firebase Console → Firestore → 規則，確認 buddies collection 設定為 <code>allow read, write: if request.auth != null;</code>，並確認 Authentication → Sign-in method → 匿名登入已啟用。':'')+'</div>';
+  }
+}
+
+function renderBuddies(){
+  const c=fd('buddies-list');const search=(fd('buddy-search').value||'').toLowerCase();
+  const readonly=!canEdit('buddies');
+  let list=allBuddies.filter(b=>{
+    const displayName=b.nickname||b.lineDisplayName||'';
+    if(search&&!(displayName.toLowerCase().includes(search)||(b.phone||'').includes(search)))return false;
+    if(buddyFilterMode==='warned')return b.isWarned===true;
+    return!b.isWarned;
+  });
+  if(!list.length){c.innerHTML='<div class="muted">無符合條件的球友</div>';return;}
+  c.innerHTML=list.map(b=>{
+    const hadWarn=!b.isWarned&&(b.warnHistory&&b.warnHistory.length);
+    const displayName=b.nickname||b.lineDisplayName||'—';
+    const levelDisp=b.level?`${b.level} 級`:'—';
+    const avatarHtml=b.linePictureUrl
+      ?`<img src="${b.linePictureUrl}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+      :`<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-h));display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:#fff;flex-shrink:0">${displayName.charAt(0)}</div>`;
+    const warnBtn=!readonly?(b.isWarned
+      ?`<button class="btn btn-ghost btn-sm bd-removewarn" data-bid="${b.id}">解除警示</button>`
+      :`<button class="btn btn-d btn-sm bd-addwarn" data-bid="${b.id}" data-lineuid="${b.lineUserId||b.id}" data-name="${displayName.replace(/"/g,'&quot;')}">加入警示</button>`
+    ):'';
+    return`<div class="buddy-card">
+      ${avatarHtml}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.95rem;margin-bottom:2px">${displayName} ${b.isWarned?'<span class="warn-tag">⚠️ 警示中</span>':''}${hadWarn?'<span style="font-size:.72rem;color:var(--text3);margin-left:4px">（曾被警示）</span>':''}</div>
+        <div class="muted" style="font-size:.78rem">LINE：${b.lineDisplayName||'—'} ${b.phone?'· 📱'+b.phone:''}</div>
+        <div class="muted" style="font-size:.78rem">程度：${levelDisp} · 來源：${b.contactSource||'—'} · 報名 ${b.totalReports||0} 次</div>
+      </div>
+      <div class="flex-gap">
+        <button class="btn btn-s btn-sm bd-detail" data-bid="${b.id}">詳情</button>
+        ${warnBtn}
+      </div>
+    </div>`;
+  }).join('');
+
+  c.onclick=function(e){
+    const btn=e.target.closest('button');if(!btn)return;
+    const bid=btn.dataset.bid;
+    if(btn.classList.contains('bd-detail'))          openBuddyDetail(bid);
+    else if(btn.classList.contains('bd-removewarn')) removeBuddyWarn(bid);
+    else if(btn.classList.contains('bd-addwarn'))    addBuddyWarnModal(bid,btn.dataset.lineuid,btn.dataset.name);
+  };
+}
+
+function addBuddyWarnModal(buddyId,lineUid,name){
+  fd('w-name').value=name;
+  fd('w-phone').value=lineUid||'';// lineUserId stored in w-phone field
+  fd('w-ses').value='';fd('w-reason').value='unpaid';fd('w-note').value='';
+  om('mo-warn');
+}
+
+async function removeBuddyWarn(id){
+  confirmDialog('確定解除此球友的警示？','確認解除','btn-w',async()=>{
+  let b;
+  if(useLocal){b=LOCAL.getAll('buddies').find(x=>x.id===id);}
+  else{const snap=await db.collection('buddies').doc(id).get();b=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!b)return;
+  const upd={isWarned:false,warnReason:'',updatedAt:Date.now()};
+  if(useLocal){LOCAL.update('buddies',id,upd);}
+  else{await db.collection('buddies').doc(id).update(upd);}
+  // Resolve active warnings by lineUserId
+  const uid=b.lineUserId||id;
+  if(useLocal){
+    const warns=LOCAL.getAll('warnings').filter(w=>w.active&&(w.lineUserId===uid||w.phone===uid));
+    warns.forEach(w=>LOCAL.update('warnings',w.id,{active:false,resolvedAt:Date.now()}));
+  }else{
+    const snap=await db.collection('warnings').where('lineUserId','==',uid).where('active','==',true).get();
+    const batch=db.batch();
+    snap.forEach(d=>batch.update(d.ref,{active:false,resolvedAt:Date.now()}));
+    await batch.commit();
+  }
+  toast('已解除警示','ok');loadBuddies();
+  if(fd('mo-buddy').classList.contains('active'))cm('mo-buddy');
+  });
+}
+
+async function openBuddyDetail(id){
+  let b;
+  if(useLocal){b=LOCAL.getAll('buddies').find(x=>x.id===id);}
+  else{const snap=await db.collection('buddies').doc(id).get();b=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!b)return;
+  const displayName=b.nickname||b.lineDisplayName||'—';
+  fd('mo-buddy-title').textContent=displayName;
+  // load reg history by lineUserId
+  const uid=b.lineUserId||id;
+  let regs;
+  if(useLocal){regs=LOCAL.getAll('registrations').filter(r=>r.lineUserId===uid);}
+  else{const snap=await db.collection('registrations').where('lineUserId','==',uid).get();regs=[];snap.forEach(d=>regs.push({id:d.id,...d.data()}));}
+  const today=new Date().toISOString().split('T')[0];
+  const oneMonthAgo=new Date();oneMonthAgo.setDate(oneMonthAgo.getDate()-30);
+  const oneMonthAgoStr=oneMonthAgo.toISOString().split('T')[0];
+  regs=regs.filter(r=>r.status!=='cancelled'&&r.sessionDate&&(r.sessionDate>=oneMonthAgoStr)).sort((a,c)=>(c.sessionDate||'').localeCompare(a.sessionDate||''));
+  const bySession={};
+  regs.forEach(r=>{
+    if(!bySession[r.sessionId])bySession[r.sessionId]={name:r.sessionName||r.sessionDate,date:r.sessionDate,count:0,totalFee:0,paid:0,regs:[]};
+    bySession[r.sessionId].count++;bySession[r.sessionId].totalFee+=(r.fee||0);
+    if(r.paid)bySession[r.sessionId].paid+=(r.fee||0);
+    bySession[r.sessionId].regs.push(r);
+  });
+  const histHtml=Object.values(bySession).length?Object.values(bySession).slice(0,20).map(sg=>{
+    const paidCount=sg.regs.filter(r=>r.paid).length;
+    const isUpcoming=sg.date>=today;
+    return`<div class="slot-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 0">
+      <div style="font-weight:700;font-size:.85rem">${sg.name||sg.date} ${isUpcoming?'<span class="badge b-confirmed" style="font-size:.67rem">即將到來</span>':'<span style="font-size:.72rem;color:var(--text3)">(歷史)</span>'}</div>
+      <div class="flex-gap" style="font-size:.8rem">
+        <span>報名 ${sg.count} 人</span>
+        <span style="color:var(--primary)">NT$ ${sg.totalFee}</span>
+        <span style="color:${paidCount===sg.count?'var(--success)':'var(--warn)'}">${paidCount===sg.count?'已全付':paidCount+'/'+sg.count+' 已付'}</span>
+      </div>
+    </div>`;
+  }).join(''):'<div class="muted">無報名紀錄</div>';
+  const warnHistHtml=(b.warnHistory&&b.warnHistory.length)?`<div class="al al-d mt8" style="font-size:.8rem"><strong>⚠️ 過往警示紀錄</strong><br>${b.warnHistory.map(h=>`${h.reason||''}${h.note?' — '+h.note:''}${h.session?' ('+h.session+')':''}`).join('<br>')}</div>`:'';
+  const readonly=!canEdit('buddies');
+  const avatarHtml=b.linePictureUrl
+    ?`<img src="${b.linePictureUrl}" style="width:52px;height:52px;border-radius:50%;object-fit:cover">`
+    :`<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-h));display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;color:#fff">${displayName.charAt(0)}</div>`;
+  fd('mo-buddy-body').innerHTML=`
+    <div class="flex-gap mb14" style="align-items:center;gap:14px">
+      ${avatarHtml}
+      <div>
+        <div style="font-size:1.05rem;font-weight:800">${displayName}</div>
+        <div class="muted" style="font-size:.8rem">LINE 顯示名稱：${b.lineDisplayName||'—'}</div>
+        <div class="muted" style="font-size:.8rem">LINE ID：${uid}</div>
+      </div>
+    </div>
+    <div class="g2 mb14">
+      <div class="stat-card"><div class="stat-lbl">程度</div><div style="font-size:1.1rem;font-weight:700">${b.level?b.level+' 級':'—'}</div></div>
+      <div class="stat-card"><div class="stat-lbl">累計報名</div><div class="stat-val">${b.totalReports||0} 次</div></div>
+    </div>
+    <div class="fg"><label class="fl">電話</label><div style="font-size:.9rem;font-weight:600">${b.phone||'—'}</div></div>
+    <div class="fg"><label class="fl">報名來源</label><div style="font-size:.9rem">${b.contactSource||'—'}</div></div>
+    <div class="fg"><label class="fl">狀態</label><div class="flex-gap" style="align-items:center;gap:8px">${b.isWarned?`<span class="badge b-warn">⚠️ 警示中 — ${b.warnReason||''}</span>${!readonly?`<button class="btn btn-ghost btn-sm" onclick="removeBuddyWarn('${b.id}')">解除警示</button>`:''}`:('<span class="badge b-confirmed">一般</span>'+(b.warnHistory&&b.warnHistory.length?'<span class="badge" style="margin-left:6px;background:#FFF5E0;border:1px solid #FFE08A;color:#C07800">有過往警示紀錄</span>':''))}</div></div>
+    ${warnHistHtml}
+    ${!readonly?`<div class="fg"><label class="fl">管理員備註（用戶不可見）</label><textarea id="buddy-note-${id}" class="fc" rows="3" placeholder="備註...">${b.adminNote||''}</textarea><button class="btn btn-s btn-sm" style="margin-top:7px" onclick="saveBuddyNote('${id}')">儲存備註</button></div>`:`<div class="fg"><label class="fl">管理員備註</label><div style="font-size:.9rem;color:var(--text2)">${b.adminNote||'無'}</div></div>`}
+    <div class="divider"></div>
+    <div class="card-title mb8">報名歷史（即將到來 + 近 30 天）</div>
+    ${histHtml}`;
+  om('mo-buddy');
+}
+
+async function saveBuddyNote(id){const note=fd('buddy-note-'+id).value;if(useLocal)LOCAL.update('buddies',id,{adminNote:note});else await db.collection('buddies').doc(id).update({adminNote:note});toast('備註已儲存','ok');}
+
+/* ============================================================
+   HISTORY
+============================================================ */
+async function loadHist(){
+  const c=fd('hist-list');c.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  const from=fd('h-from').value,to=fd('h-to').value;
+  let sessions;
+  if(useLocal){sessions=LOCAL.getAll('sessions').filter(s=>(!from||s.date>=from)&&(!to||s.date<=to)).sort((a,b)=>b.date.localeCompare(a.date));}
+  else{let q=db.collection('sessions').orderBy('date','desc');if(from)q=q.where('date','>=',from);if(to)q=q.where('date','<=',to);const snap=await q.get();sessions=[];snap.forEach(d=>sessions.push({id:d.id,...d.data()}));}
+  if(!sessions.length){c.innerHTML='<div class="muted">此期間無場次紀錄</div>';return;}
+  c.innerHTML=sessions.map(s=>{
+    const eff=effStatus(s);let sb;
+    if(eff==='ended')sb='<span class="badge b-closed">已結束</span>';
+    else if(s.status==='open')sb='<span class="badge b-open">開放中</span>';
+    else if(s.status==='hidden')sb='<span class="badge b-hidden">已隱藏</span>';
+    else sb='<span class="badge b-closed">已關閉</span>';
+    const tot=s.slots.reduce((a,sl)=>a+(sl.registered||0),0);
+    return`<div class="card"><div class="fg-between"><div><div class="card-title">${s.name||fmtDate(s.date,'zh')}</div><div class="muted">${fmtDate(s.date,'zh')} · ${s.type==='coach'?'教練場':'零打'} · ${tot} 人報名</div></div><div class="flex-gap">${sb}<button class="btn btn-s btn-sm" onclick="openHistDetail('${s.id}')">詳情</button></div></div></div>`;
+  }).join('');
+}
+
+async function openHistDetail(sid){
+  let s;
+  if(useLocal){s=LOCAL.getAll('sessions').find(x=>x.id===sid);}
+  else{const snap=await db.collection('sessions').doc(sid).get();s=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!s)return;
+  fd('mo-hist-title').textContent=s.name||fmtDate(s.date,'zh');
+  let regs;
+  if(useLocal){regs=LOCAL.find('registrations','sessionId',sid);}
+  else{const snap=await db.collection('registrations').where('sessionId','==',sid).get();regs=[];snap.forEach(d=>regs.push({id:d.id,...d.data()}));}
+  const active=regs.filter(r=>r.status!=='cancelled');const confirmed=active.filter(r=>r.status==='confirmed');const paid=confirmed.filter(r=>r.paid);const totalFee=paid.reduce((a,r)=>a+(r.fee||0),0);
+  fd('mo-hist-dash').innerHTML=`<div class="stat-card"><div class="stat-lbl">總報名</div><div class="stat-val">${active.length}</div></div><div class="stat-card"><div class="stat-lbl">正選</div><div class="stat-val">${confirmed.length}</div></div><div class="stat-card"><div class="stat-lbl">已收款</div><div class="stat-val" style="color:var(--success)">${paid.length}</div></div><div class="stat-card"><div class="stat-lbl">未收款</div><div class="stat-val" style="color:var(--danger)">${confirmed.length-paid.length}</div></div><div class="stat-card"><div class="stat-lbl">缺席</div><div class="stat-val" style="color:var(--warn)">${confirmed.filter(r=>r.absent).length}</div></div><div class="stat-card"><div class="stat-lbl">總收款</div><div class="stat-val" style="color:var(--primary);font-size:1.3rem">NT$${totalFee}</div></div>`;
+  const pg={};paid.forEach(r=>{const m=pmLabel(r.paymentMethod);if(!pg[m])pg[m]={c:0,t:0};pg[m].c++;pg[m].t+=r.fee||0;});
+  const breakdown=Object.entries(pg).map(([m,v])=>`<div class="slot-row"><span>${m}</span><span>${v.c}人 / NT$${v.t}</span></div>`).join('')||'<div class="muted">尚無付款記錄</div>';
+  const rows=active.map(r=>`<tr><td>${r.name}${r.hasWarning?' <span class="warn-tag">⚠️</span>':''}${r.source==='custom'?' <span class="badge b-custom" style="font-size:.67rem">客製</span>':''}</td><td>${r.slotName}</td><td><span class="badge ${r.status==='confirmed'?'b-confirmed':'b-waitlist'}">${r.status==='confirmed'?'正選':'備取'}</span></td><td style="color:var(--primary);font-weight:700">NT$${r.fee}</td><td>${r.paid?`<span style="color:var(--success)">✅ ${pmLabel(r.paymentMethod)}</span>`:'<span style="color:var(--danger)">未收</span>'}</td><td>${r.absent?'<span style="color:var(--warn)">缺席</span>':'-'}</td><td style="font-size:.74rem;color:var(--text2)">${fmtTs(r.timestamp)}</td></tr>`).join('');
+  fd('mo-hist-body').innerHTML=`<div class="g2 mb14"><div class="card"><div class="card-title mb14">付款方式</div>${breakdown}</div><div class="card"><div class="card-title mb14">時段統計</div>${(s.slots||[]).map((sl,i)=>{const slRegs=confirmed.filter(r=>r.primarySlotId===sl.id);const slPaid=slRegs.filter(r=>r.paid);return`<div class="slot-row"><span><span class="slot-dot" style="background:${sc(i)}"></span>${sl.name}</span><span>${slRegs.length}人 · 已收${slPaid.length}人 · NT$${slPaid.reduce((a,r)=>a+(r.fee||0),0)}</span></div>`;}).join('')}</div></div><div class="card"><div class="fg-between mb14"><div class="card-title">報名名單</div><button class="btn btn-s btn-sm" onclick="exportSingleCSV('${sid}')">📥 匯出</button></div><div class="tw"><table><thead><tr><th>姓名</th><th>時段</th><th>狀態</th><th>費用</th><th>付款</th><th>狀態</th><th>報名時間</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  om('mo-hist');
+}
+
+/* ============================================================
+   EXPORT CSV
+============================================================ */
+async function exportCSV(){const from=fd('h-from').value,to=fd('h-to').value;let ses;if(useLocal){ses=LOCAL.getAll('sessions').filter(s=>(!from||s.date>=from)&&(!to||s.date<=to));}else{let q=db.collection('sessions').orderBy('date','desc');if(from)q=q.where('date','>=',from);if(to)q=q.where('date','<=',to);const snap=await q.get();ses=[];snap.forEach(d=>ses.push({id:d.id,...d.data()}));}await genCSV(ses,'羽球報名紀錄');}
+async function exportSingleCSV(sid){let s;if(useLocal){s=LOCAL.getAll('sessions').find(x=>x.id===sid);}else{const snap=await db.collection('sessions').doc(sid).get();s=snap.exists?{id:snap.id,...snap.data()}:null;}if(s)await genCSV([s],'場次報名_'+(s.date||''));}
+async function genCSV(sessions,filename){
+  let rows=[['日期','場次名稱','類型','地點','電話','姓名','報名來源','用戶名稱','程度','時段','狀態','費用','付款狀態','付款方式','缺席','報名時間']];
+  for(const s of sessions){
+    let regs;if(useLocal){regs=LOCAL.find('registrations','sessionId',s.id);}else{const snap=await db.collection('registrations').where('sessionId','==',s.id).get();regs=[];snap.forEach(d=>regs.push(d.data()));}
+    regs.forEach(r=>{if(r.status==='cancelled')return;rows.push([s.date,s.name||'',s.type==='coach'?'教練場':'零打',s.location||'',r.mainPhone||'',r.name,r.contactSource||'',r.sourceUsername||'',r.level||'',r.slotName,r.status==='confirmed'?'正選':'備取',r.fee||0,r.paid?'已收':'未收',r.paid?pmLabel(r.paymentMethod):'',r.absent?'是':'否',fmtTs(r.timestamp)]);});
+  }
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename+'.csv';a.click();URL.revokeObjectURL(url);toast('已匯出 CSV','ok');
+}
+
+/* ============================================================
+   ACCOUNTS (V4.1: 3-level per tab)
+============================================================ */
+const PERM_TABS=[
+  {id:'sessions',label:'場次管理'},
+  {id:'regs',label:'報名名單'},
+  {id:'hist',label:'歷史紀錄'},
+  {id:'buddies',label:'球友名單'},
+  {id:'settings',label:'系統設定'},
+];
+
+function onRoleChange(){
+  const role=fd('a-role').value;
+  fd('perm-section').style.display=role==='super_admin'?'none':'block';
+}
+
+function buildPermRows(perms){
+  perms=perms||{};
+  return PERM_TABS.map(tab=>{
+    const cur=perms[tab.id]||'none';
+    return`<div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:var(--bg);border-radius:8px">
+      <div style="font-size:.83rem;font-weight:600">${tab.label}</div>
+      <div class="perm-radio-group">
+        <label><input type="radio" name="perm-${tab.id}" value="none" ${cur==='none'?'checked':''}> 無權限</label>
+        <label><input type="radio" name="perm-${tab.id}" value="view" ${cur==='view'?'checked':''}> 純瀏覽</label>
+        <label><input type="radio" name="perm-${tab.id}" value="edit" ${cur==='edit'?'checked':''}> 可編輯</label>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let accEditMode=null;// null=新增, string=編輯中的帳號 id
+
+async function loadAccs(){
+  if(!me||me.role!=='super_admin'){fd('acc-list').innerHTML='<div class="al al-d">僅主管理員可使用此功能</div>';return;}
+  const c=fd('acc-list');c.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  let accs;const rm={super_admin:'主管理員',sub_admin:'副管理員',admin:'一般管理員'};
+  if(useLocal){const m=LOCAL.get('admins')||{};accs=Object.entries(m).map(([id,d])=>({id,...d}));}
+  else{const snap=await db.collection('admins').get();accs=[];snap.forEach(d=>accs.push({id:d.id,...d.data()}));}
+  // 排序：主管理員優先
+  accs.sort((a,b)=>(a.role==='super_admin'?0:1)-(b.role==='super_admin'?0:1));
+  const permLabel=v=>v==='edit'?'<span style="color:var(--success);font-weight:700">可編輯</span>':v==='view'?'<span style="color:var(--text2)">純瀏覽</span>':'<span style="color:var(--text3)">—</span>';
+  c.innerHTML='<div class="tw"><table><thead><tr><th>帳號</th><th>層級</th><th>場次</th><th>報名</th><th>歷史</th><th>球友</th><th>設定</th><th>操作</th></tr></thead><tbody>'+
+    accs.map(a=>{
+      const isSelf=a.id===me.username;
+      const p=a.role==='super_admin'?{sessions:'edit',regs:'edit',hist:'edit',buddies:'edit',settings:'edit'}:(a.permissions||{});
+      const ops=isSelf
+        ? '<span class="muted" style="font-size:.78rem">（自己）</span>'
+        : `<button class="btn btn-s btn-sm acc-edit" data-uid="${a.id}" style="margin-right:4px">✏️ 編輯</button><button class="btn btn-d btn-sm acc-del" data-uid="${a.id}">刪除</button>`;
+      return`<tr>
+        <td style="font-weight:600">${a.id}${isSelf?'　<span class="badge b-confirmed" style="font-size:.67rem">我</span>':''}</td>
+        <td>${rm[a.role]||a.role}</td>
+        <td>${permLabel(p.sessions)}</td><td>${permLabel(p.regs)}</td><td>${permLabel(p.hist)}</td><td>${permLabel(p.buddies)}</td><td>${permLabel(p.settings)}</td>
+        <td style="white-space:nowrap">${ops}</td>
+      </tr>`;
+    }).join('')+
+  '</tbody></table></div>';
+
+  // 事件委派
+  c.onclick=function(e){
+    const btn=e.target.closest('button');if(!btn)return;
+    const uid=btn.dataset.uid;
+    if(btn.classList.contains('acc-edit'))openEditAcc(uid,accs.find(a=>a.id===uid));
+    else if(btn.classList.contains('acc-del'))delAcc(uid);
+  };
+}
+
+function openNewAcc(){
+  accEditMode=null;
+  fd('mo-acc-title').textContent='新增帳號';
+  fd('a-user').value='';fd('a-user').readOnly=false;fd('a-user').style.opacity='';
+  fd('a-pw').value='';fd('a-pw').placeholder='請輸入密碼';
+  fd('a-pw-label').textContent='密碼';
+  fd('a-pw-hint').style.display='none';
+  fd('a-role').value='admin';
+  fd('perm-section').style.display='block';
+  fd('perm-rows').innerHTML=buildPermRows({});
+  om('mo-acc');
+}
+
+function openEditAcc(uid,accData){
+  if(!accData){toast('找不到帳號資料','err');return;}
+  accEditMode=uid;
+  fd('mo-acc-title').textContent='編輯帳號：'+uid;
+  fd('a-user').value=uid;fd('a-user').readOnly=true;fd('a-user').style.opacity='.6';
+  fd('a-pw').value='';fd('a-pw').placeholder='留空表示不修改密碼';
+  fd('a-pw-label').textContent='新密碼（選填）';
+  fd('a-pw-hint').style.display='block';
+  fd('a-role').value=accData.role||'admin';
+  onRoleChange();
+  fd('perm-rows').innerHTML=buildPermRows(accData.permissions||{});
+  om('mo-acc');
+}
+
+async function saveAcc(){
+  const u=fd('a-user').value.trim();
+  const p=fd('a-pw').value;
+  const r=fd('a-role').value;
+  if(!u){toast('請填寫帳號','err');return;}
+  // 新增模式：密碼必填；編輯模式：選填
+  if(!accEditMode&&!p){toast('新增帳號時密碼為必填','err');return;}
+  let perms={};
+  if(r!=='super_admin'){
+    PERM_TABS.forEach(tab=>{
+      const el=document.querySelector(`input[name="perm-${tab.id}"]:checked`);
+      perms[tab.id]=el?el.value:'none';
+    });
+  }
+  if(accEditMode){
+    // 編輯模式：更新角色和權限，密碼留空則不更改
+    const upd={role:r,permissions:perms};
+    if(p)upd.passwordHash=hashPw(p);
+    if(useLocal){const m=LOCAL.get('admins')||{};Object.assign(m[u],upd);LOCAL.set('admins',m);}
+    else await db.collection('admins').doc(u).update(upd);
+    // 若修改的是自己，同步更新 me
+    if(u===me.username){me.role=r;me.permissions=perms;applyAdminUI();}
+    toast('帳號已更新','ok');
+  }else{
+    // 新增模式
+    const doc={role:r,permissions:perms,passwordHash:hashPw(p)};
+    if(useLocal){const m=LOCAL.get('admins')||{};m[u]=doc;LOCAL.set('admins',m);}
+    else await db.collection('admins').doc(u).set(doc);
+    toast('帳號已新增','ok');
+  }
+  cm('mo-acc');loadAccs();
+}
+
+async function delAcc(id){
+  confirmDialog('確定刪除帳號「'+id+'」？刪除後無法復原。','確認刪除','btn-d',async()=>{
+    if(useLocal){const m=LOCAL.get('admins')||{};delete m[id];LOCAL.set('admins',m);}
+    else await db.collection('admins').doc(id).delete();
+    toast('已刪除','ok');loadAccs();
+  });
+}
+
+/* ============================================================
+   TABS
+============================================================ */
+function switchTab(t,btn){
+  // 帳號管理：嚴格只允許主管理員，其他帳號連按鈕都看不到，但防禦性再擋一層
+  if(t==='accounts'){
+    if(!me||me.role!=='super_admin'){toast('此頁面僅主管理員可使用','err');return;}
+  }
+  // 系統設定：所有登入帳號都能進（無設定權限時頁面只顯示修改密碼）
+  // 其他 tab：依各自的 hasPerm 檢查
+  if(t!=='settings'&&t!=='accounts'&&me&&me.role!=='super_admin'){
+    if(!hasPerm(t)){toast('您沒有此頁面的瀏覽權限','err');return;}
+  }
+  document.querySelectorAll('[id^="tab-"]').forEach(el=>el.style.display='none');
+  document.querySelectorAll('.tb').forEach(b=>b.classList.remove('act'));
+  fd('tab-'+t).style.display='block';
+  if(btn)btn.classList.add('act');
+  if(t==='hist'){if(!fd('h-from').value){const d=new Date();d.setDate(d.getDate()-30);fd('h-from').value=d.toISOString().split('T')[0];fd('h-to').value=new Date().toISOString().split('T')[0];}loadHist();}
+  else if(t==='buddies')loadBuddies();
+  else if(t==='accounts')loadAccs();
+  else if(t==='regs')loadAdmSes();
+  else if(t==='settings'){loadCfg();applySettingsBlocks();}
+}
+
+/* ============================================================
+   INIT
+============================================================ */
+async function initApp(){
+  try{
+    let admExists;
+    if(useLocal){const m=LOCAL.get('admins')||{};admExists=!!m.admin;}
+    else{const snap=await db.collection('admins').doc('admin').get();admExists=snap.exists;}
+    if(!admExists){
+      const defPerms={sessions:'edit',regs:'edit',hist:'edit',buddies:'edit',settings:'edit'};
+      if(useLocal){const m=LOCAL.get('admins')||{};m.admin={role:'super_admin',permissions:defPerms,passwordHash:hashPw('admin1234')};LOCAL.set('admins',m);}
+      else await db.collection('admins').doc('admin').set({role:'super_admin',permissions:defPerms,passwordHash:hashPw('admin1234')});
+    }
+  }catch(e){}
+  fd('app').style.display='block';
+  await loadCfg();
+  loadPub();
+  // 初始化 LIFF（config 載入後才有 liffId）
+  await initLiff();
+}
+
+auth&&auth.onAuthStateChanged(u=>{if(u){_fbReady=true;initApp();}});
+if(!auth){/* local mode already initialized */}
+
+// Auto-refresh pub page every minute to remove expired sessions
+setInterval(()=>{if(fd('page-pub')&&fd('page-pub').classList.contains('active'))loadPub();},60000);
+</script>
+</body>
+</html>
