@@ -876,6 +876,31 @@ tr:hover td{background:var(--bg);}
   </div>
 </div>
 
+<!-- ADJUST SLOT MODAL -->
+<div id="mo-adjust-slot" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-adjust-slot')">✕</button>
+    <div class="modal-title">✏️ 調整報名時段</div>
+    <p class="muted mb14" id="adjust-slot-info"></p>
+    <div class="fg">
+      <label class="fl">調整為時段</label>
+      <select id="adjust-slot-select" class="fc" onchange="onAdjustSlotChange()"></select>
+    </div>
+    <div class="fg">
+      <label class="fl">調整後費用（元）</label>
+      <input id="adjust-slot-fee" class="fc" type="number" placeholder="230">
+    </div>
+    <div class="fg">
+      <label class="fl">調整原因（選填，管理員備註）</label>
+      <input id="adjust-slot-note" class="fc" placeholder="例：B時段滿員改以A結算">
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-adjust-slot')">取消</button>
+      <button class="btn btn-p" onclick="confirmAdjustSlot()">確認調整</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============================================================
    LOCAL STORAGE (fallback)
@@ -1835,7 +1860,7 @@ function renderPersonRow(p,i,s){
       <div class="fg" style="margin:0"><label class="fl">${en?'Nickname *':'稱呼 *'}${i===0?' ('+( buddy?buddy.nickname:'')+'）':''}</label><input class="fc pr-name" placeholder="${i===0?'或填其他稱呼':'同行者稱呼'}" value="${p.name||''}" oninput="updatePerson(${i},'name',this.value)"></div>
       <div class="fg" style="margin:0"><label class="fl">時段</label><select class="fc pr-slot" onchange="updatePerson(${i},'slotId',this.value)"><option value="">請選擇</option>${slotOpts}</select></div>
     </div>
-    <div class="fg mt8" style="margin-bottom:4px"><label class="fl">程度（選填）</label>
+    <div class="fg mt8" style="margin-bottom:4px"><label class="fl">程度 *（必填）</label>
       <div class="level-grid" style="grid-template-columns:repeat(9,1fr)">${levelPills}</div>
     </div>
     <div class="fg mt8" style="margin:0"><label class="fl">備註（選填）</label><input class="fc pr-note" placeholder="例：第一次來" value="${p.note||''}" oninput="updatePerson(${i},'note',this.value)"></div>
@@ -1860,7 +1885,6 @@ function selectSlotForAll(slotId){regPersons=regPersons.map(p=>({...p,slotId}));
 
 function goRegStep(n){
   if(n===2&&regStep===1){
-    // 必須至少選一個時段（任一人）— 或允許在step2再選
     // 無需驗證，讓用戶直接到step2
   }
   if(n===3&&regStep===2){
@@ -1874,6 +1898,11 @@ function goRegStep(n){
     });
     const valid=regPersons.filter(p=>p.name&&p.slotId);
     if(!valid.length){toast('請至少填寫一位報名人員的稱呼和時段','err');return;}
+    // 程度必填驗證
+    const missingLevel=regPersons.filter(p=>p.name&&p.slotId&&!p.level);
+    if(missingLevel.length){
+      toast('請為每位報名人員選擇程度（必填）','err');return;
+    }
   }
   regStep=n;renderRegStep();
 }
@@ -1889,38 +1918,83 @@ async function submitMultiReg(){
     const results=[];
     for(const p of persons){
       const sl=s.slots.find(x=>x.id===p.slotId);if(!sl)continue;
-      const avail=calcAvail(s,sl);
-      const status=avail>0?'confirmed':'waitlist';
-      let waitOrder=null;
-      if(status==='waitlist'){
-        let wl;
-        if(useLocal){wl=LOCAL.find('registrations','primarySlotId',p.slotId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist');}
-        else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
-        waitOrder=wl.length+1;
-      }
-      const affected=[p.slotId];
+      const isCombo=sl.combinedWith&&sl.combinedWith.length>0;
       let hasWarn=false;
       try{
         if(useLocal){hasWarn=LOCAL.find('warnings','lineUserId',lineUser.lineUserId).some(x=>x.active);}
         else{const ws=await db.collection('warnings').where('lineUserId','==',lineUser.lineUserId).where('active','==',true).get();hasWarn=!ws.empty;}
       }catch(e){}
-      const regDoc={
-        sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
-        lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
-        mainPhone:buddy.phone||'',name:p.name,
-        isSelf:!!p.isSelf,
-        contactSource:buddy.contactSource||'',level:p.level||null,
-        note:p.note,language:currentLang,slotIds:affected,primarySlotId:p.slotId,slotName:sl.name,
-        fee:sl.fee||0,status,waitlistOrder:waitOrder,paid:false,paymentMethod:'',absent:false,
-        source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
-      };
-      await DB.add('registrations',regDoc);
-      if(status==='confirmed'){
-        if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);}}
-        else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
-        const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);
+
+      if(isCombo){
+        // ── C 時段：對每個子時段分別計算正取/備取，可混合 ──
+        let feeCharged=false;
+        for(const childId of sl.combinedWith){
+          const child=s.slots.find(x=>x.id===childId);if(!child)continue;
+          const childAvail=calcAvail(s,child);
+          const childStatus=childAvail>0?'confirmed':'waitlist';
+          let childWaitOrder=null;
+          if(childStatus==='waitlist'){
+            let wl;
+            if(useLocal){wl=LOCAL.find('registrations','primarySlotId',childId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist'&&x.comboParentSlotId===p.slotId);}
+            else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',childId).where('comboParentSlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
+            childWaitOrder=wl.length+1;
+          }
+          const childFee=feeCharged?0:(sl.fee||0);
+          const childDoc={
+            sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
+            lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
+            mainPhone:buddy.phone||'',name:p.name,isSelf:!!p.isSelf,
+            contactSource:buddy.contactSource||'',level:p.level||null,
+            note:p.note,language:currentLang,
+            slotIds:[childId],primarySlotId:childId,
+            slotName:sl.name+'（'+child.name+'）',
+            slotStartTime:child.startTime||'',slotEndTime:child.endTime||'',
+            comboParentSlotId:p.slotId,comboParentSlotName:sl.name,
+            fee:childFee,status:childStatus,waitlistOrder:childWaitOrder,
+            paid:false,paymentMethod:'',absent:false,
+            source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
+          };
+          await DB.add('registrations',childDoc);
+          if(childStatus==='confirmed'){
+            if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>x.id===childId?{...x,registered:(x.registered||0)+1}:x);}}
+            else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>x.id===childId?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
+            const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>x.id===childId?{...x,registered:(x.registered||0)+1}:x);
+          }
+          const timeRange=child.startTime&&child.endTime?' '+child.startTime+'–'+child.endTime:'';
+          results.push({...p,status:childStatus,waitOrder:childWaitOrder,fee:childFee,
+            slotName:sl.name+'（'+child.name+timeRange+'）',isComboChild:true,comboParent:sl.name});
+          feeCharged=true;
+        }
+      }else{
+        // ── 一般時段 ──
+        const avail=calcAvail(s,sl);
+        const status=avail>0?'confirmed':'waitlist';
+        let waitOrder=null;
+        if(status==='waitlist'){
+          let wl;
+          if(useLocal){wl=LOCAL.find('registrations','primarySlotId',p.slotId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist');}
+          else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
+          waitOrder=wl.length+1;
+        }
+        const affected=[p.slotId];
+        const regDoc={
+          sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
+          lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
+          mainPhone:buddy.phone||'',name:p.name,isSelf:!!p.isSelf,
+          contactSource:buddy.contactSource||'',level:p.level||null,
+          note:p.note,language:currentLang,slotIds:affected,primarySlotId:p.slotId,slotName:sl.name,
+          slotStartTime:sl.startTime||'',slotEndTime:sl.endTime||'',
+          fee:sl.fee||0,status,waitlistOrder:waitOrder,paid:false,paymentMethod:'',absent:false,
+          source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
+        };
+        await DB.add('registrations',regDoc);
+        if(status==='confirmed'){
+          if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);}}
+          else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
+          const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);
+        }
+        results.push({...p,status,waitOrder,fee:sl.fee||0,slotName:sl.name});
       }
-      results.push({...p,status,waitOrder,fee:sl.fee||0,slotName:sl.name});
     }
     // update buddy stats
     await updateBuddyStats(lineUser.lineUserId,ts);
@@ -2018,7 +2092,17 @@ async function renderMyRegs(){
         else if(r.status==='confirmed')badge=`<span class="badge b-confirmed">✓ 正選</span>`;
         else badge=`<span class="badge b-waitlist">⏳ 備取${r.waitlistOrder?'#'+r.waitlistOrder:''}`;
         const selfTag=r.isSelf?'':' <span class="muted" style="font-size:.74rem">（代報）</span>';
-        return`<div class="slot-row"><span>${r.name}${selfTag} — ${r.slotName}</span><span>${badge} ${r.status!=='cancelled'?`<strong style="color:var(--primary)">NT$${r.fee}</strong>`:''} ${r.paid?'<span class="muted" style="font-size:.74rem">✅已付</span>':''}</span></div>`;
+        // 組合時段顯示：名稱 + 時間區間
+        const timeRange=(r.slotStartTime&&r.slotEndTime)?` ${r.slotStartTime}–${r.slotEndTime}`:(r.slotStartTime?` ${r.slotStartTime}`:'');
+        const slotDisplay=r.slotName+(timeRange?`<span class="muted" style="font-size:.78rem"> ${timeRange}</span>`:'');
+        const noteHtml=r.note?`<div style="font-size:.76rem;color:var(--text2);margin-top:3px;padding:4px 8px;background:var(--bg2);border-radius:6px;border-left:2px solid var(--border)">📝 ${r.note}</div>`:'';
+        return`<div class="slot-row" style="flex-direction:column;align-items:flex-start;gap:3px;padding:10px 0">
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+            <span>${r.name}${selfTag} — ${slotDisplay}</span>
+            <span style="flex-shrink:0;margin-left:8px">${badge} ${r.status!=='cancelled'?`<strong style="color:var(--primary)">NT$${r.fee}</strong>`:''} ${r.paid?'<span class="muted" style="font-size:.74rem">✅已付</span>':''}</span>
+          </div>
+          ${noteHtml}
+        </div>`;
       }).join('')}
     </div>`).join('');
   }catch(e){inner.innerHTML='<div class="al al-d">查詢失敗：'+e.message+'</div>';}
@@ -2377,6 +2461,7 @@ async function renderRoster(sid,mode,area){
     const absentTag=r.absent?'<span class="badge b-absent" style="font-size:.67rem">缺席</span>':'';
     const hasNote=r.note&&r.note.trim();
     const noteTag=hasNote?`<span class="badge b-custom" style="font-size:.67rem;cursor:pointer;background:#F0F4FF;border-color:#C5D5FF;color:#3B5BDB" data-rid="${r.id}" title="${(r.note||'').replace(/"/g,'&quot;')}" onclick="showNotePopup(this)">📝 備註</span>`:'';
+    const adjustedTag=r.adjustedAt?`<span class="badge" style="font-size:.67rem;background:#FFF8E0;border:1px solid #FFE58A;color:#7A5A00" title="原時段：${r.originalSlotName||''}｜原費用：NT$${r.originalFee||0}${r.adjustNote?' ｜'+r.adjustNote:''}">✏️ 已調整</span>`:'';
     // 用 data-* 屬性傳值，避免姓名/場次名稱含特殊字元破壞 onclick 字串
     const dId=`data-rid="${r.id}"`;
     const dSid=`data-sid="${sid}"`;
@@ -2405,12 +2490,12 @@ async function renderRoster(sid,mode,area){
       }else if(r.promotedFromWaitlist){
         ops+=`<button class="btn btn-w btn-sm rw-demote" ${dId} ${dSid} ${dSlot}>↓備取</button> `;
       }
-      ops+=`<button class="btn btn-d btn-sm rw-cancel" ${dId} ${dSid}>取消</button> <button class="btn btn-w btn-sm rw-warn" ${dId} ${dSid}>警示</button>`;
+      ops+=`<button class="btn btn-d btn-sm rw-cancel" ${dId} ${dSid}>取消</button> <button class="btn btn-w btn-sm rw-warn" ${dId} ${dSid}>警示</button> <button class="btn btn-s btn-sm rw-adjust" ${dId} ${dSid} ${dSlot}>✏️ 調整時段</button>`;
     }else if(!readonly&&isCancelled){
       ops+=`<button class="btn btn-s btn-sm rw-restore" ${dId} ${dSid} ${dSlot}>還原報名</button>`;
     }
     const rowStyle=isCancelled?'opacity:.65;':'';
-    return`<tr style="${rowStyle}" data-name="${(r.name||'').replace(/"/g,'&quot;')}" data-sesname="${((s?s.name||s.date:'')||'').replace(/"/g,'&quot;')}" data-lineuid="${r.lineUserId||''}" data-phone="${r.mainPhone||''}" data-slotname="${(r.slotName||'').replace(/"/g,'&quot;')}" data-note="${(r.note||'').replace(/"/g,'&quot;')}"><td>${r.name} ${wt}${srcTag}${promotedTag}${wlTag}${absentTag} ${noteTag}<div style="font-size:.74rem;color:var(--text2)">${r.lineDisplayName?r.lineDisplayName+' · ':''}${r.mainPhone||''}</div></td><td><span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}</td><td>${r.level?r.level+'級':'—'}</td><td style="color:var(--primary);font-weight:700">NT$${r.fee}</td><td>${pcell}</td><td style="font-size:.74rem;color:var(--text2)">${fmtTs(r.timestamp)}</td><td style="white-space:nowrap">${ops}</td></tr>`;
+    return`<tr style="${rowStyle}" data-name="${(r.name||'').replace(/"/g,'&quot;')}" data-sesname="${((s?s.name||s.date:'')||'').replace(/"/g,'&quot;')}" data-lineuid="${r.lineUserId||''}" data-phone="${r.mainPhone||''}" data-slotname="${(r.slotName||'').replace(/"/g,'&quot;')}" data-note="${(r.note||'').replace(/"/g,'&quot;')}"><td>${r.name} ${wt}${srcTag}${promotedTag}${wlTag}${absentTag} ${noteTag} ${adjustedTag}<div style="font-size:.74rem;color:var(--text2)">${r.lineDisplayName?r.lineDisplayName+' · ':''}${r.mainPhone||''}</div></td><td><span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}</td><td>${r.level?r.level+'級':'—'}</td><td style="color:var(--primary);font-weight:700">NT$${r.fee}</td><td>${pcell}</td><td style="font-size:.74rem;color:var(--text2)">${fmtTs(r.timestamp)}</td><td style="white-space:nowrap">${ops}</td></tr>`;
   };
 
   // 取消名單（全部取消，不論時段篩選）
@@ -2445,6 +2530,7 @@ async function renderRoster(sid,mode,area){
     else if(btn.classList.contains('rw-cancel'))   {cancelReg(rid,bsid);}
     else if(btn.classList.contains('rw-warn'))     {openWarnModal(name,sesname,lineuid,phone);}
     else if(btn.classList.contains('rw-restore'))  {restoreReg(rid,bsid,slotid);}
+    else if(btn.classList.contains('rw-adjust'))   {openAdjustSlotModal(rid,name,slotname,bsid,slotid);}
   };
 }
 
@@ -2549,6 +2635,96 @@ function showNotePopup(el){
   // 點其他地方關閉
   setTimeout(()=>document.addEventListener('click',function h(e){if(!popup.contains(e.target)){popup.remove();document.removeEventListener('click',h);}},),100);
 }
+/* ── 調整時段 ── */
+let adjustTarget=null;
+function openAdjustSlotModal(regId,name,slotname,sid,currentSlotId){
+  const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  adjustTarget={regId,sid,currentSlotId};
+  fd('adjust-slot-info').textContent=`${name} 目前時段：${slotname}`;
+  fd('adjust-slot-note').value='';
+  // 時段選單：顯示名稱 + 時間
+  const sel=fd('adjust-slot-select');
+  sel.innerHTML=s.slots.map(sl=>{
+    const time=sl.startTime&&sl.endTime?` ${sl.startTime}–${sl.endTime}`:'';
+    return`<option value="${sl.id}" ${sl.id===currentSlotId?'selected':''}>${sl.name}${time}（NT$${sl.fee||0}）</option>`;
+  }).join('');
+  // 自動帶入目前時段費用
+  const curSlot=s.slots.find(x=>x.id===currentSlotId);
+  fd('adjust-slot-fee').value=curSlot?curSlot.fee||0:0;
+  om('mo-adjust-slot');
+}
+function onAdjustSlotChange(){
+  const sid=adjustTarget?adjustTarget.sid:'';
+  const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  const newSlotId=fd('adjust-slot-select').value;
+  const sl=s.slots.find(x=>x.id===newSlotId);
+  if(sl)fd('adjust-slot-fee').value=sl.fee||0;
+}
+async function confirmAdjustSlot(){
+  if(!adjustTarget)return;
+  const{regId,sid,currentSlotId}=adjustTarget;
+  const newSlotId=fd('adjust-slot-select').value;
+  const newFee=parseInt(fd('adjust-slot-fee').value)||0;
+  const note=fd('adjust-slot-note').value.trim();
+  const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  const newSl=s.slots.find(x=>x.id===newSlotId);if(!newSl)return;
+  // 讀取舊紀錄
+  let reg;
+  if(useLocal){reg=LOCAL.getAll('registrations').find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg){toast('找不到報名紀錄','err');return;}
+  // 更新報名紀錄
+  const upd={
+    primarySlotId:newSlotId,
+    slotIds:[newSlotId],
+    slotName:newSl.name,
+    slotStartTime:newSl.startTime||'',
+    slotEndTime:newSl.endTime||'',
+    fee:newFee,
+    adjustedAt:Date.now(),
+    adjustedBy:me?me.username:'admin',
+    adjustNote:note,
+    originalSlotId:reg.originalSlotId||currentSlotId,
+    originalSlotName:reg.originalSlotName||reg.slotName,
+    originalFee:reg.originalFee!=null?reg.originalFee:reg.fee,
+  };
+  if(useLocal)LOCAL.update('registrations',regId,upd);
+  else await db.collection('registrations').doc(regId).update(upd);
+  // 更新場次 registered 計數：舊時段 -1，新時段 +1（僅正選且時段有變動時）
+  if(reg.status==='confirmed'&&newSlotId!==currentSlotId){
+    if(useLocal){
+      const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+      if(si>=0){
+        LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(sl=>{
+          if(sl.id===currentSlotId)return{...sl,registered:Math.max(0,(sl.registered||1)-1)};
+          if(sl.id===newSlotId)return{...sl,registered:(sl.registered||0)+1};
+          return sl;
+        });
+      }
+    }else{
+      const sSnap=await db.collection('sessions').doc(sid).get();
+      if(sSnap.exists){
+        const upd2=sSnap.data().slots.map(sl=>{
+          if(sl.id===currentSlotId)return{...sl,registered:Math.max(0,(sl.registered||1)-1)};
+          if(sl.id===newSlotId)return{...sl,registered:(sl.registered||0)+1};
+          return sl;
+        });
+        await db.collection('sessions').doc(sid).update({slots:upd2});
+      }
+    }
+    const ci=sesCache.findIndex(x=>x.id===sid);
+    if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(sl=>{
+      if(sl.id===currentSlotId)return{...sl,registered:Math.max(0,(sl.registered||1)-1)};
+      if(sl.id===newSlotId)return{...sl,registered:(sl.registered||0)+1};
+      return sl;
+    });
+  }
+  cm('mo-adjust-slot');
+  toast(`已調整為 ${newSl.name}，費用 NT$${newFee}`,'ok');
+  renderRoster(sid,rosterMode,fd('reg-list-area'));
+  loadAdmSes();
+}
+
 function openPayModal(id,name,slot){payTarget=id;fd('pay-info').textContent=name+' — '+slot;fd('pay-method').value='cash';fd('pay-other-w').style.display='none';om('mo-pay');}
 async function confirmPay(){let m=fd('pay-method').value;if(m==='other')m=fd('pay-other').value||'other';if(useLocal)LOCAL.update('registrations',payTarget,{paid:true,paymentMethod:m});else await db.collection('registrations').doc(payTarget).update({paid:true,paymentMethod:m,paidAt:Date.now()});cm('mo-pay');toast('收款已記錄','ok');renderRoster(rosterSesId,rosterMode,fd('reg-list-area'));}
 
@@ -2645,7 +2821,15 @@ function openCustomModal(sid){
   customSesId=sid;const s=sesCache.find(x=>x.id===sid);if(!s)return;
   fd('cu-name').value='';fd('cu-phone').value='';fd('cu-source').value='';fd('cu-level').value='';fd('cu-note').value='';
   fd('cu-username-wrap').style.display='none';fd('cu-source-other-wrap').style.display='none';
-  const sel=fd('cu-slot');sel.innerHTML=s.slots.map(sl=>'<option value="'+sl.id+'">'+sl.name+'</option>').join('');
+  const sel=fd('cu-slot');
+  sel.innerHTML=s.slots.map(sl=>{
+    const time=sl.startTime&&sl.endTime?` ${sl.startTime}–${sl.endTime}`:'';
+    return`<option value="${sl.id}">${sl.name}${time}（NT$${sl.fee||0}）</option>`;
+  }).join('');
+  sel.onchange=function(){
+    const chosen=s.slots.find(x=>x.id===this.value);
+    if(chosen)fd('cu-fee').value=chosen.fee||0;
+  };
   if(s.slots[0])fd('cu-fee').value=s.slots[0].fee||cfg.casualFee||230;
   om('mo-custom');
 }
