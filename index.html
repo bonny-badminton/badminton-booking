@@ -882,6 +882,9 @@ tr:hover td{background:var(--bg);}
     <button class="mc" onclick="cm('mo-adjust-slot')">✕</button>
     <div class="modal-title">✏️ 調整報名時段</div>
     <p class="muted mb14" id="adjust-slot-info"></p>
+    <div id="adjust-combo-hint" class="al al-i mb14" style="display:none;font-size:.8rem;line-height:1.65">
+      💡 此紀錄為 C 時段整合報名。若只是要把候補中的子時段晉升為正取，建議改用名單上的 <strong>🔄 重新計算</strong> 按鈕，效果更精準。<br>這裡的調整時段適用於要換成完全不同時段的情況。
+    </div>
     <div class="fg">
       <label class="fl">調整為時段</label>
       <select id="adjust-slot-select" class="fc" onchange="onAdjustSlotChange()"></select>
@@ -2603,6 +2606,9 @@ async function renderRoster(sid,mode,area){
         ops+=`<button class="btn btn-w btn-sm rw-demote" ${dId} ${dSid} ${dSlot}>↓備取</button> `;
       }
       ops+=`<button class="btn btn-d btn-sm rw-cancel" ${dId} ${dSid}>取消</button> <button class="btn btn-w btn-sm rw-warn" ${dId} ${dSid}>警示</button> <button class="btn btn-s btn-sm rw-adjust" ${dId} ${dSid} ${dSlot}>✏️ 調整時段</button>`;
+      if(r.isComboReg){
+        ops+=` <button class="btn btn-ok btn-sm rw-recalc" ${dId} ${dSid} title="重新讀取目前名額，將候補中的子時段晉升為正取">🔄 重新計算</button>`;
+      }
     }else if(!readonly&&isCancelled){
       ops+=`<button class="btn btn-s btn-sm rw-restore" ${dId} ${dSid} ${dSlot}>還原報名</button>`;
     }
@@ -2643,6 +2649,7 @@ async function renderRoster(sid,mode,area){
     else if(btn.classList.contains('rw-warn'))     {openWarnModal(name,sesname,lineuid,phone);}
     else if(btn.classList.contains('rw-restore'))  {restoreReg(rid,bsid,slotid);}
     else if(btn.classList.contains('rw-adjust'))   {openAdjustSlotModal(rid,name,slotname,bsid,slotid);}
+    else if(btn.classList.contains('rw-recalc'))   {reCalcComboReg(rid,bsid);}
   };
 }
 
@@ -2754,6 +2761,11 @@ function openAdjustSlotModal(regId,name,slotname,sid,currentSlotId){
   adjustTarget={regId,sid,currentSlotId};
   fd('adjust-slot-info').textContent=`${name} 目前時段：${slotname}`;
   fd('adjust-slot-note').value='';
+  // 判斷是否為 C 時段整合報名 → 顯示提示
+  let reg=null;
+  if(useLocal){reg=LOCAL.getAll('registrations').find(x=>x.id===regId);}
+  const hint=fd('adjust-combo-hint');
+  if(hint)hint.style.display=(reg&&reg.isComboReg)?'block':'none';
   // 時段選單：顯示名稱 + 時間
   const sel=fd('adjust-slot-select');
   sel.innerHTML=s.slots.map(sl=>{
@@ -2835,6 +2847,121 @@ async function confirmAdjustSlot(){
   toast(`已調整為 ${newSl.name}，費用 NT$${newFee}`,'ok');
   renderRoster(sid,rosterMode,fd('reg-list-area'));
   loadAdmSes();
+}
+
+/* ── 重新計算 C 時段子時段狀態（B 名額釋出後晉升）── */
+async function reCalcComboReg(regId,sid){
+  const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  // 讀取報名紀錄
+  let reg;
+  if(useLocal){reg=LOCAL.getAll('registrations').find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg||!reg.isComboReg||!reg.comboChildStatuses){toast('此紀錄不是 C 時段整合報名','err');return;}
+
+  // 找出目前仍為 waitlist 的子時段
+  const waitlistChildren=Object.entries(reg.comboChildStatuses)
+    .filter(([,st])=>st==='waitlist')
+    .map(([cid])=>cid);
+
+  if(!waitlistChildren.length){toast('所有子時段都已是正取，無需重新計算','ok');return;}
+
+  // 對每個 waitlist 子時段重新計算名額
+  const nowAvail={};
+  waitlistChildren.forEach(cid=>{
+    const child=s.slots.find(x=>x.id===cid);
+    if(child)nowAvail[cid]=calcAvail(s,child);
+  });
+
+  const canPromote=waitlistChildren.filter(cid=>(nowAvail[cid]||0)>0);
+  const stillWait=waitlistChildren.filter(cid=>(nowAvail[cid]||0)<=0);
+
+  if(!canPromote.length){
+    toast('目前仍無空位可晉升（'+waitlistChildren.map(cid=>{const c=s.slots.find(x=>x.id===cid);return(c?c.name:cid)+'剩'+( nowAvail[cid]||0)+'名';}).join('、')+'）','err');
+    return;
+  }
+
+  // 組成說明文字讓管理員確認
+  const promoteNames=canPromote.map(cid=>{const c=s.slots.find(x=>x.id===cid);return c?c.name:cid;});
+  const stillNames=stillWait.map(cid=>{const c=s.slots.find(x=>x.id===cid);return c?c.name:cid;});
+  const msg=`將把以下子時段從候補晉升為正取：\n${promoteNames.join('、')}`
+    +(stillNames.length?`\n\n仍無空位（維持候補）：${stillNames.join('、')}`:'')
+    +`\n\n確認後會更新名單並增加這些時段的報名人數。`;
+
+  confirmDialog(msg,'確認晉升','btn-ok',async()=>{
+    // 更新 comboChildStatuses
+    const newStatuses={...reg.comboChildStatuses};
+    const newWaitOrders={...(reg.comboWaitOrders||{})};
+    canPromote.forEach(cid=>{
+      newStatuses[cid]='confirmed';
+      delete newWaitOrders[cid]; // 晉升後移除候補號碼
+    });
+
+    // 整體狀態：全部都是 confirmed → 'confirmed'，否則維持 mixed
+    const allConfirmed=Object.values(newStatuses).every(v=>v==='confirmed');
+    const newOverallStatus=allConfirmed?'confirmed':'confirmed'; // 有正取就是 confirmed
+
+    const upd={
+      comboChildStatuses:newStatuses,
+      comboWaitOrders:newWaitOrders,
+      status:newOverallStatus,
+      waitlistOrder:null,
+      promotedFromWaitlist:true,
+      comboReCalcAt:Date.now(),
+      comboReCalcBy:me?me.username:'admin',
+    };
+    if(useLocal)LOCAL.update('registrations',regId,upd);
+    else await db.collection('registrations').doc(regId).update(upd);
+
+    // 更新場次 registered：每個晉升的子時段 +1
+    for(const cid of canPromote){
+      if(useLocal){
+        const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+        if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);}
+      }else{
+        const sSnap=await db.collection('sessions').doc(sid).get();
+        if(sSnap.exists){const u2=sSnap.data().slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);await db.collection('sessions').doc(sid).update({slots:u2});}
+      }
+      const ci=sesCache.findIndex(x=>x.id===sid);
+      if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);
+
+      // 重新排列此子時段的其他候補順序（讓其他人順序正確）
+      await reNumberComboChildWaitlist(sid,cid);
+    }
+
+    toast(`已晉升：${promoteNames.join('、')} → 正取`+(stillNames.length?`，${stillNames.join('、')} 維持候補`:''),'ok');
+    renderRoster(sid,rosterMode,fd('reg-list-area'));
+    loadAdmSes();
+  });
+}
+
+/* ── 重排 C 時段某子時段的候補順序 ── */
+async function reNumberComboChildWaitlist(sid,childId){
+  // 找出所有仍在此子時段候補的 comboReg 紀錄，依 timestamp 重排
+  let wlRegs;
+  if(useLocal){
+    wlRegs=LOCAL.getAll('registrations').filter(r=>
+      r.sessionId===sid&&r.isComboReg&&
+      r.comboChildStatuses&&r.comboChildStatuses[childId]==='waitlist'
+    ).sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+    wlRegs.forEach((r,i)=>{
+      const newWO={...(r.comboWaitOrders||{}),[childId]:i+1};
+      LOCAL.update('registrations',r.id,{comboWaitOrders:newWO});
+    });
+  }else{
+    const snap=await db.collection('registrations')
+      .where('sessionId','==',sid)
+      .where('isComboReg','==',true)
+      .where(`comboChildStatuses.${childId}`,'==','waitlist')
+      .get();
+    wlRegs=[];snap.forEach(d=>wlRegs.push({id:d.id,...d.data()}));
+    wlRegs.sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+    const batch=db.batch();
+    wlRegs.forEach((r,i)=>{
+      const newWO={...(r.comboWaitOrders||{}),[childId]:i+1};
+      batch.update(db.collection('registrations').doc(r.id),{comboWaitOrders:newWO});
+    });
+    if(wlRegs.length)await batch.commit();
+  }
 }
 
 function openPayModal(id,name,slot){payTarget=id;fd('pay-info').textContent=name+' — '+slot;fd('pay-method').value='cash';fd('pay-other-w').style.display='none';om('mo-pay');}
