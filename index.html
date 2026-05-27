@@ -1759,9 +1759,26 @@ function renderPubCard(s){
     return`<div class="card ses-card" style="opacity:.7"><div class="sc-hd"><div class="fg-between"><div><div class="sc-title">${s.name||fmtDate(s.date,currentLang)}</div><div class="sc-date">${fmtDate(s.date,currentLang)}</div>${locHtml}</div>${typBadge}</div></div><div style="padding:16px;text-align:center"><span class="badge b-closed">🔒 ${en?'Registration Closed':'報名已截止'}</span></div></div>`;
   }
   const slotsHtml=s.slots.map((sl,i)=>{
-    const avail=calcAvail(s,sl);const total=sl.quota===9999?(s.courts||1)*8:sl.quota;
-    const used=total-Math.max(0,avail);const pct=total?Math.round(used/total*100):0;
-    const fc=avail<=0?'full':pct>=70?'mid':'ok';
+    const avail=calcAvail(s,sl);
+    const isCombo=sl.combinedWith&&sl.combinedWith.length>0;
+    let pct,fc;
+    if(isCombo){
+      // C 時段：進度條根據「實際直接報 C 的人數 / C 的有效容量（取子時段最小名額）」
+      const cReg=sl.registered||0;
+      // 有效容量 = 子時段中最小的名額
+      const childCaps=sl.combinedWith.map(cid=>{
+        const c=s.slots.find(x=>x.id===cid);
+        if(!c)return 0;
+        return c.quota===9999?(s.courts||1)*8:c.quota;
+      });
+      const effCap=childCaps.length?Math.min(...childCaps):1;
+      pct=effCap?Math.round(cReg/effCap*100):0;
+    }else{
+      const total=sl.quota===9999?(s.courts||1)*8:sl.quota;
+      const used=total-Math.max(0,avail);
+      pct=total?Math.round(used/total*100):0;
+    }
+    fc=avail<=0?'full':pct>=70?'mid':'ok';
     let qt;
     if(avail<=0)qt=`<span style="font-size:.75rem;color:var(--danger);font-weight:700">${en?'Full ⏳ Waitlist':'額滿 ⏳可備取'}</span>`;
     else qt=`<span style="font-size:.75rem;color:var(--text2)">${en?'Left:':'剩 '}<strong>${avail}</strong>${en?' spots':' 名'}</span>`;
@@ -1912,93 +1929,157 @@ async function submitMultiReg(){
   if(!lineUser||!buddy){toast('請先登入 LINE','err');return;}
   const persons=regPersons.filter(p=>p.name&&p.slotId);
   if(!persons.length){toast('請填寫報名人員資料','err');return;}
+
+  // ── 預檢：計算每個人的狀態，若有 C 時段子時段混合正取/備取，先彈出確認視窗 ──
+  const preview=_buildRegPreview(s,persons);
+  const needWarn=preview.some(p=>p.isCombo&&p.comboStatuses&&p.comboStatuses.some(cs=>cs.status==='waitlist'));
+  if(needWarn){
+    _showComboWarnModal(preview,s,()=>_doSubmit(s,persons,preview));
+    return;
+  }
+  await _doSubmit(s,persons,preview);
+}
+
+function _buildRegPreview(s,persons){
+  return persons.map(p=>{
+    const sl=s.slots.find(x=>x.id===p.slotId);if(!sl)return {...p,sl,status:'error'};
+    const isCombo=sl.combinedWith&&sl.combinedWith.length>0;
+    if(isCombo){
+      const comboStatuses=sl.combinedWith.map(cid=>{
+        const child=s.slots.find(x=>x.id===cid);if(!child)return null;
+        const avail=calcAvail(s,child);
+        return{id:cid,name:child.name,startTime:child.startTime,endTime:child.endTime,
+          avail,status:avail>0?'confirmed':'waitlist'};
+      }).filter(Boolean);
+      const overallStatus=comboStatuses.every(cs=>cs.status==='confirmed')?'confirmed':
+        comboStatuses.every(cs=>cs.status==='waitlist')?'waitlist':'mixed';
+      return{...p,sl,isCombo:true,comboStatuses,overallStatus};
+    }else{
+      const avail=calcAvail(s,sl);
+      return{...p,sl,isCombo:false,status:avail>0?'confirmed':'waitlist',avail};
+    }
+  });
+}
+
+function _showComboWarnModal(preview,s,onConfirm){
+  const mixed=preview.filter(p=>p.isCombo&&p.comboStatuses);
+  let html='';
+  mixed.forEach(p=>{
+    html+=`<div style="background:var(--bg2);border-radius:10px;padding:12px 14px;margin-bottom:10px">`;
+    html+=`<div style="font-weight:700;margin-bottom:6px">👤 ${p.name} — ${p.sl.name}</div>`;
+    p.comboStatuses.forEach(cs=>{
+      const timeStr=cs.startTime&&cs.endTime?` ${cs.startTime}–${cs.endTime}`:'';
+      if(cs.status==='confirmed'){
+        html+=`<div style="color:var(--success);font-size:.83rem">✓ ${cs.name}${timeStr}：正取（剩 ${cs.avail} 名）</div>`;
+      }else{
+        html+=`<div style="color:var(--warn);font-size:.83rem;font-weight:700">⏳ ${cs.name}${timeStr}：<strong>名額已滿，將登記為候補</strong></div>`;
+      }
+    });
+    html+=`<div style="font-size:.78rem;color:var(--text2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">候補成功後，管理員將另行通知。</div>`;
+    html+=`</div>`;
+  });
+  html+=`<div class="al al-i" style="font-size:.8rem">確認後系統將依上述狀態分別登記正取 / 候補，費用以整筆 C 時段計算。</div>`;
+  fd('combo-warn-body').innerHTML=html;
+  // 綁一次性確認按鈕
+  const ok=fd('combo-warn-ok');
+  const newOk=ok.cloneNode(true);ok.parentNode.replaceChild(newOk,ok);
+  newOk.addEventListener('click',()=>{cm('mo-combo-warn');onConfirm();});
+  om('mo-combo-warn');
+}
+
+async function _doSubmit(s,persons,preview){
   const btn=fd('r-submit');if(btn){btn.disabled=true;btn.textContent='處理中...';}
   try{
     const ts=Date.now();
     const results=[];
-    for(const p of persons){
-      const sl=s.slots.find(x=>x.id===p.slotId);if(!sl)continue;
-      const isCombo=sl.combinedWith&&sl.combinedWith.length>0;
-      let hasWarn=false;
-      try{
-        if(useLocal){hasWarn=LOCAL.find('warnings','lineUserId',lineUser.lineUserId).some(x=>x.active);}
-        else{const ws=await db.collection('warnings').where('lineUserId','==',lineUser.lineUserId).where('active','==',true).get();hasWarn=!ws.empty;}
-      }catch(e){}
+    let hasWarn=false;
+    try{
+      if(useLocal){hasWarn=LOCAL.find('warnings','lineUserId',lineUser.lineUserId).some(x=>x.active);}
+      else{const ws=await db.collection('warnings').where('lineUserId','==',lineUser.lineUserId).where('active','==',true).get();hasWarn=!ws.empty;}
+    }catch(e){}
 
-      if(isCombo){
-        // ── C 時段：對每個子時段分別計算正取/備取，可混合 ──
-        let feeCharged=false;
-        for(const childId of sl.combinedWith){
-          const child=s.slots.find(x=>x.id===childId);if(!child)continue;
-          const childAvail=calcAvail(s,child);
-          const childStatus=childAvail>0?'confirmed':'waitlist';
-          let childWaitOrder=null;
-          if(childStatus==='waitlist'){
+    for(const p of preview){
+      if(!p.sl)continue;
+      if(p.isCombo){
+        // ── C 時段：存一筆 registration，comboSlotStatuses 記錄各子時段狀態 ──
+        const comboStatuses=p.comboStatuses; // [{id,name,startTime,endTime,avail,status}]
+        const overallStatus=p.overallStatus; // 'confirmed'|'waitlist'|'mixed'
+        // 候補順序：對每個 waitlist 子時段計算
+        const comboWaitOrders={};
+        for(const cs of comboStatuses){
+          if(cs.status==='waitlist'){
             let wl;
-            if(useLocal){wl=LOCAL.find('registrations','primarySlotId',childId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist'&&x.comboParentSlotId===p.slotId);}
-            else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',childId).where('comboParentSlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
-            childWaitOrder=wl.length+1;
+            if(useLocal){wl=LOCAL.getAll('registrations').filter(r=>r.sessionId===regSesId&&r.comboChildStatuses&&r.comboChildStatuses[cs.id]==='waitlist');}
+            else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where(`comboChildStatuses.${cs.id}`,'==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
+            comboWaitOrders[cs.id]=wl.length+1;
           }
-          const childFee=feeCharged?0:(sl.fee||0);
-          const childDoc={
-            sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
-            lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
-            mainPhone:buddy.phone||'',name:p.name,isSelf:!!p.isSelf,
-            contactSource:buddy.contactSource||'',level:p.level||null,
-            note:p.note,language:currentLang,
-            slotIds:[childId],primarySlotId:childId,
-            slotName:sl.name+'（'+child.name+'）',
-            slotStartTime:child.startTime||'',slotEndTime:child.endTime||'',
-            comboParentSlotId:p.slotId,comboParentSlotName:sl.name,
-            fee:childFee,status:childStatus,waitlistOrder:childWaitOrder,
-            paid:false,paymentMethod:'',absent:false,
-            source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
-          };
-          await DB.add('registrations',childDoc);
-          if(childStatus==='confirmed'){
-            if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>x.id===childId?{...x,registered:(x.registered||0)+1}:x);}}
-            else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>x.id===childId?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
-            const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>x.id===childId?{...x,registered:(x.registered||0)+1}:x);
-          }
-          const timeRange=child.startTime&&child.endTime?' '+child.startTime+'–'+child.endTime:'';
-          results.push({...p,status:childStatus,waitOrder:childWaitOrder,fee:childFee,
-            slotName:sl.name+'（'+child.name+timeRange+'）',isComboChild:true,comboParent:sl.name});
-          feeCharged=true;
         }
-      }else{
-        // ── 一般時段 ──
-        const avail=calcAvail(s,sl);
-        const status=avail>0?'confirmed':'waitlist';
-        let waitOrder=null;
-        if(status==='waitlist'){
-          let wl;
-          if(useLocal){wl=LOCAL.find('registrations','primarySlotId',p.slotId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist');}
-          else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
-          waitOrder=wl.length+1;
-        }
-        const affected=[p.slotId];
         const regDoc={
           sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
           lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
           mainPhone:buddy.phone||'',name:p.name,isSelf:!!p.isSelf,
-          contactSource:buddy.contactSource||'',level:p.level||null,
-          note:p.note,language:currentLang,slotIds:affected,primarySlotId:p.slotId,slotName:sl.name,
-          slotStartTime:sl.startTime||'',slotEndTime:sl.endTime||'',
-          fee:sl.fee||0,status,waitlistOrder:waitOrder,paid:false,paymentMethod:'',absent:false,
+          contactSource:buddy.contactSource||'',level:p.level||null,note:p.note,language:currentLang,
+          // C 時段整合欄位
+          primarySlotId:p.slotId,slotName:p.sl.name,
+          slotIds:comboStatuses.map(cs=>cs.id),
+          isComboReg:true,
+          comboParentSlotId:p.slotId,comboParentSlotName:p.sl.name,
+          comboChildStatuses:Object.fromEntries(comboStatuses.map(cs=>[cs.id,cs.status])),
+          comboWaitOrders,
+          // 整體狀態：mixed 存為 'confirmed'（至少部分正取），waitlist 順序個別記錄
+          status:overallStatus==='waitlist'?'waitlist':'confirmed',
+          waitlistOrder:overallStatus==='waitlist'?Math.min(...Object.values(comboWaitOrders).filter(v=>v)):null,
+          fee:p.sl.fee||0,paid:false,paymentMethod:'',absent:false,
+          source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
+        };
+        await DB.add('registrations',regDoc);
+        // 更新各正取子時段的 registered
+        for(const cs of comboStatuses){
+          if(cs.status==='confirmed'){
+            if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>x.id===cs.id?{...x,registered:(x.registered||0)+1}:x);}}
+            else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>x.id===cs.id?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
+            const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>x.id===cs.id?{...x,registered:(x.registered||0)+1}:x);
+          }
+        }
+        // 顯示用：每個子時段一行結果
+        comboStatuses.forEach(cs=>{
+          results.push({...p,status:cs.status,waitOrder:comboWaitOrders[cs.id]||null,
+            fee:cs===comboStatuses[0]?p.sl.fee||0:0,
+            slotName:`${p.sl.name}（${cs.name}${cs.startTime?` ${cs.startTime}–${cs.endTime}`:''}）`,
+            isComboChild:true});
+        });
+      }else{
+        // ── 一般時段 ──
+        const avail=calcAvail(s,p.sl);
+        const status=avail>0?'confirmed':'waitlist';
+        let waitOrder=null;
+        if(status==='waitlist'){
+          let wl;
+          if(useLocal){wl=LOCAL.find('registrations','primarySlotId',p.slotId).filter(x=>x.sessionId===regSesId&&x.status==='waitlist'&&!x.isComboReg);}
+          else{const snap=await db.collection('registrations').where('sessionId','==',regSesId).where('primarySlotId','==',p.slotId).where('status','==','waitlist').get();wl=[];snap.forEach(d=>wl.push(d.data()));}
+          waitOrder=wl.length+1;
+        }
+        const regDoc={
+          sessionId:regSesId,sessionName:s.name||fmtDate(s.date,'zh'),sessionDate:s.date,
+          lineUserId:lineUser.lineUserId,lineDisplayName:lineUser.lineDisplayName,
+          mainPhone:buddy.phone||'',name:p.name,isSelf:!!p.isSelf,
+          contactSource:buddy.contactSource||'',level:p.level||null,note:p.note,language:currentLang,
+          slotIds:[p.slotId],primarySlotId:p.slotId,slotName:p.sl.name,
+          slotStartTime:p.sl.startTime||'',slotEndTime:p.sl.endTime||'',
+          isComboReg:false,
+          fee:p.sl.fee||0,status,waitlistOrder:waitOrder,paid:false,paymentMethod:'',absent:false,
           source:'normal',hasWarning:hasWarn,timestamp:ts,promotedFromWaitlist:false
         };
         await DB.add('registrations',regDoc);
         if(status==='confirmed'){
-          if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);}}
-          else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
-          const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>affected.includes(x.id)?{...x,registered:(x.registered||0)+1}:x);
+          if(useLocal){const sesList=LOCAL.getAll('sessions');const si=sesList.findIndex(x=>x.id===regSesId);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(x=>x.id===p.slotId?{...x,registered:(x.registered||0)+1}:x);}}
+          else{const sSnap=await db.collection('sessions').doc(regSesId).get();if(sSnap.exists){const upd=sSnap.data().slots.map(x=>x.id===p.slotId?{...x,registered:(x.registered||0)+1}:x);await db.collection('sessions').doc(regSesId).update({slots:upd});}}
+          const ci=sesCache.findIndex(x=>x.id===regSesId);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(x=>x.id===p.slotId?{...x,registered:(x.registered||0)+1}:x);
         }
-        results.push({...p,status,waitOrder,fee:sl.fee||0,slotName:sl.name});
+        results.push({...p,status,waitOrder,fee:p.sl.fee||0,slotName:p.sl.name});
       }
     }
-    // update buddy stats
     await updateBuddyStats(lineUser.lineUserId,ts);
-    // 推播 LINE 通知給管理員（Make Webhook，非同步不擋流程）
     const registrantName=buddy?buddy.nickname||buddy.lineDisplayName||lineUser.lineDisplayName:lineUser.lineDisplayName;
     sendRegNotify(s,results,registrantName);
     cm('mo-reg');
@@ -2008,8 +2089,8 @@ async function submitMultiReg(){
     fd('n-status-title').textContent=hasWL?(en?'Some placed on waitlist':'部分進入備取名單'):(en?'Registration successful!':'報名成功！');
     const infoLines=results.map(r=>`${r.name} — ${r.slotName} NT$${r.fee} ${r.status==='waitlist'?'⏳#'+r.waitOrder:'✓'}`).join('\n');
     fd('n-info').textContent=infoLines;
-    const totalFee=results.reduce((a,r)=>a+r.fee,0);
-    fd('n-msg').textContent=`總金額：NT$ ${totalFee}\n付款方式請於報到時告知管理員。`;
+    const totalFee=[...new Set(results.filter(r=>!r.isComboChild||results.filter(x=>x.isComboChild&&x.name===r.name).indexOf(r)===0).map(r=>r.fee))].reduce((a,f)=>a+f,0)||results.reduce((a,r,i)=>{if(r.isComboChild){return results.findIndex(x=>x.isComboChild&&x.name===r.name&&x.comboParent===r.comboParent)===i?a+(r.fee||0):a;}return a+(r.fee||0);},0);
+    fd('n-msg').textContent=`總金額：NT$ ${results.filter((r,i)=>!r.isComboChild||i===results.findIndex(x=>x.name===r.name&&x.comboParent===r.comboParent)).reduce((a,r)=>a+(r.fee||0),0)}\n付款方式請於報到時告知管理員。`;
     fd('n-msg').style.display='block';fd('n-warn').style.display='none';om('mo-notice');
     loadPub();
   }catch(err){toast('報名失敗：'+err.message,'err');}
@@ -2092,14 +2173,30 @@ async function renderMyRegs(){
         else if(r.status==='confirmed')badge=`<span class="badge b-confirmed">✓ 正選</span>`;
         else badge=`<span class="badge b-waitlist">⏳ 備取${r.waitlistOrder?'#'+r.waitlistOrder:''}`;
         const selfTag=r.isSelf?'':' <span class="muted" style="font-size:.74rem">（代報）</span>';
-        // 組合時段顯示：名稱 + 時間區間
-        const timeRange=(r.slotStartTime&&r.slotEndTime)?` ${r.slotStartTime}–${r.slotEndTime}`:(r.slotStartTime?` ${r.slotStartTime}`:'');
-        const slotDisplay=r.slotName+(timeRange?`<span class="muted" style="font-size:.78rem"> ${timeRange}</span>`:'');
         const noteHtml=r.note?`<div style="font-size:.76rem;color:var(--text2);margin-top:3px;padding:4px 8px;background:var(--bg2);border-radius:6px;border-left:2px solid var(--border)">📝 ${r.note}</div>`:'';
+        // C 時段整合：顯示各子時段狀態
+        let slotHtml='';
+        if(r.isComboReg&&r.comboChildStatuses){
+          const childLines=Object.entries(r.comboChildStatuses).map(([cid,cst])=>{
+            const wOrder=r.comboWaitOrders&&r.comboWaitOrders[cid]?` 候補#${r.comboWaitOrders[cid]}`:'';
+            const color=cst==='confirmed'?'var(--success)':'var(--warn)';
+            const icon=cst==='confirmed'?'✓':'⏳';
+            // 從場次快取找子時段名稱
+            const cs=sesCache.find(sx=>sx.id===r.sessionId);
+            const child=cs&&cs.slots.find(sl=>sl.id===cid);
+            const childName=child?child.name:cid;
+            const timeStr=child&&child.startTime?` ${child.startTime}–${child.endTime}`:'';
+            return`<div style="color:${color};font-size:.78rem">${icon} ${childName}${timeStr}${wOrder}</div>`;
+          }).join('');
+          slotHtml=`<div><strong>${r.slotName}</strong><div style="margin-top:2px">${childLines}</div></div>`;
+        }else{
+          const timeRange=(r.slotStartTime&&r.slotEndTime)?` ${r.slotStartTime}–${r.slotEndTime}`:(r.slotStartTime?` ${r.slotStartTime}`:'');
+          slotHtml=r.slotName+(timeRange?`<span class="muted" style="font-size:.78rem"> ${timeRange}</span>`:'');
+        }
         return`<div class="slot-row" style="flex-direction:column;align-items:flex-start;gap:3px;padding:10px 0">
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-            <span>${r.name}${selfTag} — ${slotDisplay}</span>
-            <span style="flex-shrink:0;margin-left:8px">${badge} ${r.status!=='cancelled'?`<strong style="color:var(--primary)">NT$${r.fee}</strong>`:''} ${r.paid?'<span class="muted" style="font-size:.74rem">✅已付</span>':''}</span>
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:flex-start">
+            <span>${r.name}${selfTag} — ${slotHtml}</span>
+            <span style="flex-shrink:0;margin-left:8px">${r.isComboReg&&r.comboChildStatuses&&Object.values(r.comboChildStatuses).some(v=>v==='waitlist')?'<span class="badge b-waitlist" style="font-size:.67rem">部分候補</span>':badge} ${r.status!=='cancelled'?`<strong style="color:var(--primary)">NT$${r.fee}</strong>`:''} ${r.paid?'<span class="muted" style="font-size:.74rem">✅已付</span>':''}</span>
           </div>
           ${noteHtml}
         </div>`;
@@ -2462,10 +2559,25 @@ async function renderRoster(sid,mode,area){
     const hasNote=r.note&&r.note.trim();
     const noteTag=hasNote?`<span class="badge b-custom" style="font-size:.67rem;cursor:pointer;background:#F0F4FF;border-color:#C5D5FF;color:#3B5BDB" data-rid="${r.id}" title="${(r.note||'').replace(/"/g,'&quot;')}" onclick="showNotePopup(this)">📝 備註</span>`:'';
     const adjustedTag=r.adjustedAt?`<span class="badge" style="font-size:.67rem;background:#FFF8E0;border:1px solid #FFE58A;color:#7A5A00" title="原時段：${r.originalSlotName||''}｜原費用：NT$${r.originalFee||0}${r.adjustNote?' ｜'+r.adjustNote:''}">✏️ 已調整</span>`:'';
-    // 用 data-* 屬性傳值，避免姓名/場次名稱含特殊字元破壞 onclick 字串
     const dId=`data-rid="${r.id}"`;
     const dSid=`data-sid="${sid}"`;
     const dSlot=`data-slotid="${r.primarySlotId}"`;
+
+    // ── C 時段整合：時段欄顯示各子時段狀態 ──
+    let slotDisplay='';
+    if(r.isComboReg&&r.comboChildStatuses&&s){
+      const parts=Object.entries(r.comboChildStatuses).map(([cid,cst])=>{
+        const child=s.slots.find(x=>x.id===cid);
+        const childName=child?child.name:cid;
+        const timeStr=child&&child.startTime?` ${child.startTime}–${child.endTime}`:'';
+        const wOrder=r.comboWaitOrders&&r.comboWaitOrders[cid]?`#${r.comboWaitOrders[cid]}`:'';
+        if(cst==='confirmed')return`<span style="color:var(--success);font-size:.75rem">✓ ${childName}${timeStr}</span>`;
+        return`<span style="color:var(--warn);font-size:.75rem">⏳ ${childName}${timeStr} 候補${wOrder}</span>`;
+      });
+      slotDisplay=`<span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}<div style="margin-top:3px;display:flex;flex-direction:column;gap:1px">${parts.join('')}</div>`;
+    }else{
+      slotDisplay=`<span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}`;
+    }
 
     let pcell='';
     if(!readonly&&!isCancelled){
@@ -2495,7 +2607,7 @@ async function renderRoster(sid,mode,area){
       ops+=`<button class="btn btn-s btn-sm rw-restore" ${dId} ${dSid} ${dSlot}>還原報名</button>`;
     }
     const rowStyle=isCancelled?'opacity:.65;':'';
-    return`<tr style="${rowStyle}" data-name="${(r.name||'').replace(/"/g,'&quot;')}" data-sesname="${((s?s.name||s.date:'')||'').replace(/"/g,'&quot;')}" data-lineuid="${r.lineUserId||''}" data-phone="${r.mainPhone||''}" data-slotname="${(r.slotName||'').replace(/"/g,'&quot;')}" data-note="${(r.note||'').replace(/"/g,'&quot;')}"><td>${r.name} ${wt}${srcTag}${promotedTag}${wlTag}${absentTag} ${noteTag} ${adjustedTag}<div style="font-size:.74rem;color:var(--text2)">${r.lineDisplayName?r.lineDisplayName+' · ':''}${r.mainPhone||''}</div></td><td><span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}</td><td>${r.level?r.level+'級':'—'}</td><td style="color:var(--primary);font-weight:700">NT$${r.fee}</td><td>${pcell}</td><td style="font-size:.74rem;color:var(--text2)">${fmtTs(r.timestamp)}</td><td style="white-space:nowrap">${ops}</td></tr>`;
+    return`<tr style="${rowStyle}" data-name="${(r.name||'').replace(/"/g,'&quot;')}" data-sesname="${((s?s.name||s.date:'')||'').replace(/"/g,'&quot;')}" data-lineuid="${r.lineUserId||''}" data-phone="${r.mainPhone||''}" data-slotname="${(r.slotName||'').replace(/"/g,'&quot;')}" data-note="${(r.note||'').replace(/"/g,'&quot;')}"><td>${r.name} ${wt}${srcTag}${promotedTag}${wlTag}${absentTag} ${noteTag} ${adjustedTag}<div style="font-size:.74rem;color:var(--text2)">${r.lineDisplayName?r.lineDisplayName+' · ':''}${r.mainPhone||''}</div></td><td>${slotDisplay}</td><td>${r.level?r.level+'級':'—'}</td><td style="color:var(--primary);font-weight:700">NT$${r.fee}</td><td>${pcell}</td><td style="font-size:.74rem;color:var(--text2)">${fmtTs(r.timestamp)}</td><td style="white-space:nowrap">${ops}</td></tr>`;
   };
 
   // 取消名單（全部取消，不論時段篩選）
@@ -3303,5 +3415,17 @@ if(!auth){/* local mode already initialized */}
 // Auto-refresh pub page every minute to remove expired sessions
 setInterval(()=>{if(fd('page-pub')&&fd('page-pub').classList.contains('active'))loadPub();},60000);
 </script>
+<!-- COMBO SLOT WARNING MODAL -->
+<div id="mo-combo-warn" class="mo">
+  <div class="modal modal-sm">
+    <div class="modal-title">⚠️ 部分時段名額狀況</div>
+    <div id="combo-warn-body" style="margin-bottom:16px;font-size:.85rem;line-height:1.75;color:var(--text)"></div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="cm('mo-combo-warn')">取消報名</button>
+      <button class="btn btn-p" id="combo-warn-ok">確認，繼續報名</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
