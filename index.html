@@ -2914,6 +2914,18 @@ async function confirmAdjustSlot(){
     originalSlotStartTime:reg.originalSlotStartTime||(reg.slotStartTime||''),
     originalSlotEndTime:reg.originalSlotEndTime||(reg.slotEndTime||''),
     originalFee:reg.originalFee!=null?reg.originalFee:reg.fee,
+    // 調整時段後清除 combo 狀態，此人已不再是 C 時段報名
+    isComboReg:false,
+    comboChildStatuses:null,
+    comboWaitOrders:null,
+    comboReCalcAt:null,
+    comboReCalcBy:null,
+    comboReCalcSnapshot:null,
+    // 儲存原始 combo 快照，供「還原調整」使用
+    originalIsComboReg:reg.isComboReg||false,
+    originalComboChildStatuses:reg.comboChildStatuses||null,
+    originalComboWaitOrders:reg.comboWaitOrders||null,
+    originalSlotIds:reg.slotIds||[currentSlotId],
   };
   if(useLocal)LOCAL.update('registrations',regId,upd);
   else await db.collection('registrations').doc(regId).update(upd);
@@ -2971,7 +2983,7 @@ async function undoAdjustSlot(regId,sid){
     '確認還原調整','btn-w',async()=>{
     const upd={
       primarySlotId:reg.originalSlotId,
-      slotIds:[reg.originalSlotId],
+      slotIds:reg.originalSlotIds||[reg.originalSlotId],
       slotName:origSlotName,
       slotStartTime:reg.originalSlotStartTime||'',
       slotEndTime:reg.originalSlotEndTime||'',
@@ -2980,6 +2992,14 @@ async function undoAdjustSlot(regId,sid){
       adjustedAt:null,adjustedBy:null,adjustNote:null,
       originalSlotId:null,originalSlotName:null,
       originalSlotStartTime:null,originalSlotEndTime:null,originalFee:null,
+      // 還原 combo 狀態（若原本是 C 時段報名，從快照還原）
+      isComboReg:reg.originalIsComboReg||false,
+      comboChildStatuses:reg.originalComboChildStatuses||null,
+      comboWaitOrders:reg.originalComboWaitOrders||null,
+      originalIsComboReg:null,
+      originalComboChildStatuses:null,
+      originalComboWaitOrders:null,
+      originalSlotIds:null,
     };
     if(useLocal)LOCAL.update('registrations',regId,upd);
     else await db.collection('registrations').doc(regId).update(upd);
