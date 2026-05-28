@@ -1600,16 +1600,15 @@ async function testWebhook(){
   const res=fd('webhook-test-result');
   if(res){res.style.display='block';res.className='al al-i mt8';res.textContent='🔄 發送測試中...';}
   try{
+    const formData=new URLSearchParams();
+    formData.append('type','test');
+    formData.append('message','🧪 Webhook 測試成功！Bonny 羽球隊報名系統已連線。');
+    formData.append('timestamp',new Date().toISOString());
+    formData.append('site',cfg.siteTitle||'Bonny 羽球隊');
     await fetch(url,{
       method:'POST',
       mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        type:'test',
-        message:'🧪 Webhook 測試成功！Bonny 羽球隊報名系統已連線。',
-        timestamp:new Date().toISOString(),
-        site:cfg.siteTitle||'Bonny 羽球隊'
-      })
+      body:formData
     });
     if(res){res.className='al al-s mt8';res.textContent='✅ 測試訊息已發送！請確認 Make 是否收到，並查看 LINE 群組。';}
     toast('測試訊號已送出','ok');
@@ -1676,11 +1675,20 @@ async function sendRegNotify(session, results, registrantName){
   };
 
   try{
+    const formData=new URLSearchParams();
+    formData.append('type',payload.type);
+    formData.append('message',message);
+    formData.append('sessionName',payload.sessionName||'');
+    formData.append('sessionDate',payload.sessionDate||'');
+    formData.append('registrantName',payload.registrantName||'');
+    formData.append('confirmedCount',String(payload.confirmedCount||0));
+    formData.append('waitlistCount',String(payload.waitlistCount||0));
+    formData.append('totalFee',String(payload.totalFee||0));
+    formData.append('timestamp',payload.timestamp||'');
     await fetch(url,{
       method:'POST',
       mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
+      body:formData
     });
   }catch(e){
     console.warn('Webhook 通知發送失敗：',e.message);
