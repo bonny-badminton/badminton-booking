@@ -3009,7 +3009,7 @@ async function undoAdjustSlot(regId,sid){
 }
 
 /* ── 重新計算 C 時段子時段狀態（B 名額釋出後晉升）── */
-async function reCalcComboReg(regId,sid){\
+async function reCalcComboReg(regId,sid){
   const s=sesCache.find(x=>x.id===sid);if(!s)return;
   // 讀取報名紀錄
   let reg;
