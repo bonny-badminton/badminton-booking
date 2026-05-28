@@ -1663,7 +1663,7 @@ async function sendRegNotify(session, results, registrantName){
 
   const payload={
     type:'new_registration',
-    message,
+    message:message.replace(/\n/g,'\\n'),
     sessionId:session.id,
     sessionName:session.name||fmtDate(session.date,'zh'),
     sessionDate:session.date,
