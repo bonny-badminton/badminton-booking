@@ -3009,13 +3009,14 @@ async function undoAdjustSlot(regId,sid){
 }
 
 /* ── 重新計算 C 時段子時段狀態（B 名額釋出後晉升）── */
-async function reCalcComboReg(regId,sid){
+async function reCalcComboReg(regId,sid){\
   const s=sesCache.find(x=>x.id===sid);if(!s)return;
   // 讀取報名紀錄
   let reg;
   if(useLocal){reg=LOCAL.getAll('registrations').find(x=>x.id===regId);}
   else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
-  if(!reg||!reg.isComboReg||!reg.comboChildStatuses){toast('此紀錄不是 C 時段整合報名','err');return;}
+  if(!reg){toast('找不到報名紀錄','err');return;}
+  if(!reg.isComboReg||!reg.comboChildStatuses){toast('此紀錄不是 C 時段整合報名','err');return;}
 
   // 找出目前仍為 waitlist 的子時段
   const waitlistChildren=Object.entries(reg.comboChildStatuses)
@@ -3024,18 +3025,39 @@ async function reCalcComboReg(regId,sid){
 
   if(!waitlistChildren.length){toast('所有子時段都已是正取，無需重新計算','ok');return;}
 
-  // 對每個 waitlist 子時段重新計算名額
+  // ── 從 registrations 實際查詢各子時段正選人數，而非依賴 sessions.registered ──
   const nowAvail={};
-  waitlistChildren.forEach(cid=>{
-    const child=s.slots.find(x=>x.id===cid);
-    if(child)nowAvail[cid]=calcAvail(s,child);
-  });
+  for(const cid of waitlistChildren){
+    const child=s.slots.find(x=>x.id===cid);if(!child)continue;
+    const cap=child.quota===9999?(s.courts||1)*8:child.quota;
+    let confirmedCount=0;
+    if(useLocal){
+      // 排除自己這筆，計算其他正選人數
+      confirmedCount=LOCAL.getAll('registrations').filter(r=>
+        r.id!==regId &&
+        r.sessionId===sid &&
+        r.status==='confirmed' &&
+        (r.primarySlotId===cid || (r.slotIds&&r.slotIds.includes(cid)))
+      ).length;
+    }else{
+      const snap=await db.collection('registrations')
+        .where('sessionId','==',sid)
+        .where('status','==','confirmed')
+        .get();
+      snap.forEach(d=>{
+        if(d.id===regId)return;
+        const data=d.data();
+        if(data.primarySlotId===cid||(data.slotIds&&data.slotIds.includes(cid)))confirmedCount++;
+      });
+    }
+    nowAvail[cid]=Math.max(0,cap-confirmedCount);
+  }
 
   const canPromote=waitlistChildren.filter(cid=>(nowAvail[cid]||0)>0);
   const stillWait=waitlistChildren.filter(cid=>(nowAvail[cid]||0)<=0);
 
   if(!canPromote.length){
-    toast('目前仍無空位可晉升（'+waitlistChildren.map(cid=>{const c=s.slots.find(x=>x.id===cid);return(c?c.name:cid)+'剩'+( nowAvail[cid]||0)+'名';}).join('、')+'）','err');
+    toast('目前仍無空位可晉升（'+waitlistChildren.map(cid=>{const c=s.slots.find(x=>x.id===cid);return(c?c.name:cid)+'剩'+(nowAvail[cid]||0)+'名';}).join('、')+'）','err');
     return;
   }
 
@@ -3832,23 +3854,8 @@ async function initApp(){
   }
 }
 
-/* ── iOS PWA：LINE 授權後回到瀏覽器，提示用戶回到 App ── */
-function showReturnToAppBanner(){
-  // 判斷是否本身是 standalone（如果是，就不需要這個提示）
-  const isStandalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
-  if(isStandalone)return;
-  // 建立提示橫幅
-  const banner=document.createElement('div');
-  banner.id='return-to-app-banner';
-  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#06C755;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 2px 12px rgba(0,0,0,.2);font-size:.88rem;font-weight:700';
-  banner.innerHTML=`
-    <span>✅ LINE 登入完成！請回到主畫面的 App 繼續報名</span>
-    <button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:5px 10px;border-radius:20px;cursor:pointer;font-weight:700;font-size:.82rem;white-space:nowrap">關閉</button>
-  `;
-  document.body.prepend(banner);
-  // 10 秒後自動消失
-  setTimeout(()=>banner.remove(),10000);
-}
+/* ── iOS PWA 橫幅已移除 ── */
+function showReturnToAppBanner(){/* 已停用 */}
 
 auth&&auth.onAuthStateChanged(u=>{if(u){_fbReady=true;initApp();}});
 if(!auth){/* local mode already initialized */}
