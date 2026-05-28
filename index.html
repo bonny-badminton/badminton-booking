@@ -451,14 +451,14 @@ tr:hover td{background:var(--bg);}
         <div class="fg"><label class="fl">LIFF ID</label><input id="s-liff-id" class="fc" placeholder="1234567890-xxxxxxxx"></div>
         <button class="btn btn-p btn-sm" onclick="saveLiffId()">儲存 LIFF ID</button>
         <div class="divider" style="margin:16px 0"></div>
-        <div class="card-title mb8">📣 Make Webhook 報名通知</div>
+        <div class="card-title mb8">📣 報名通知 Webhook（n8n）</div>
         <p class="muted mb8" style="font-size:.8rem;line-height:1.7">
-          有新報名時，系統自動呼叫此 Webhook，由 Make 推播 LINE 通知到管理員群組。<br>
-          設定步驟：Make → 新增 Scenario → <strong>Custom Webhook</strong> 模組 → 複製 Webhook URL 貼入下方，後續接 <strong>HTTP → LINE Messaging API</strong> 模組即可。
+          有新報名時，系統自動呼叫此 Webhook，由 n8n 即時推播 LINE 通知到管理員群組。<br>
+          設定步驟：n8n → 新增 Workflow → <strong>Webhook</strong> 節點 → 複製 <strong>Production URL</strong> 貼入下方（格式：<code>https://xxx.app.n8n.cloud/webhook/xxx</code>）。
         </p>
         <div class="fg">
-          <label class="fl">Make Webhook URL</label>
-          <input id="s-make-webhook" class="fc" placeholder="https://hook.eu2.make.com/xxxxxxxxxxxxxxxx">
+          <label class="fl">n8n Webhook URL</label>
+          <input id="s-make-webhook" class="fc" placeholder="https://xxx.app.n8n.cloud/webhook/xxxxxxxx">
         </div>
         <div class="flex-gap mt8">
           <button class="btn btn-p btn-sm" onclick="saveWebhookSettings()">儲存設定</button>
@@ -1601,6 +1601,7 @@ async function testWebhook(){
   try{
     await fetch(url,{
       method:'POST',
+      mode:'no-cors',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         type:'test',
@@ -1676,6 +1677,7 @@ async function sendRegNotify(session, results, registrantName){
   try{
     await fetch(url,{
       method:'POST',
+      mode:'no-cors',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload)
     });
