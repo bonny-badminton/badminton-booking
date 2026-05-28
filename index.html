@@ -2,8 +2,16 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>🏸 Bonny 羽球隊 — 場次報名</title>
+<!-- PWA / Add to Home Screen -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bonny 羽球">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#FF9F68">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23FF9F68'/><text y='.9em' font-size='72' x='12'>🏸</text></svg>">
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Bonny 羽球隊&quot;,&quot;short_name&quot;:&quot;Bonny 羽球&quot;,&quot;start_url&quot;:&quot;./&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23FFFDF8&quot;,&quot;theme_color&quot;:&quot;%23FF9F68&quot;,&quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23FF9F68'/><text y='.9em' font-size='72' x='12'>🏸</text></svg>&quot;,&quot;sizes&quot;:&quot;any&quot;,&quot;type&quot;:&quot;image/svg+xml&quot;}]}">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -1237,10 +1245,28 @@ async function startLineLogin(){
     }
   }
   try{
+    // 儲存待處理的報名場次（授權後回來繼續）
+    if(pendingRegSesId)sessionStorage.setItem('bonny_pending_reg',pendingRegSesId);
+
+    // 判斷是否為 PWA standalone 模式（iOS 加入主畫面 / Android TWA）
+    const isStandalone=
+      window.navigator.standalone===true||
+      window.matchMedia('(display-mode: standalone)').matches;
+
+    // redirectUri 必須精確是 LIFF Endpoint URL（LINE Developers 後台填的那個）
+    // 用 origin + pathname 確保不帶多餘的 query string
+    const redirectUri=window.location.origin+window.location.pathname;
+
     if(liff.isInClient()){
+      // 在 LINE App 內：直接 login，不需要 redirectUri
       liff.login();
     }else{
-      liff.login({redirectUri:window.location.href});
+      // 無論 standalone 或一般瀏覽器，都用同一個乾淨的 redirectUri
+      // LIFF 授權後會自動帶 access_token 回來，initLiff 偵測後完成登入
+      // standalone 下 Safari 會開新頁完成授權，授權後 redirect 回 redirectUri
+      // iOS Safari standalone 特性：redirect 回來時會在 Safari 開啟（而非 WebApp）
+      // 解法：在 redirectUri 後加 ?from=line_auth，頁面載入時偵測並提示用戶重新開啟 WebApp
+      liff.login({redirectUri:redirectUri+'?from=line_auth'});
     }
   }catch(e){
     toast('LINE 登入失敗：'+e.message,'err');
@@ -1250,6 +1276,11 @@ async function startLineLogin(){
 async function loadOrCreateBuddy(){
   if(!lineUser)return;
   const uid=lineUser.lineUserId;
+  // 還原 PWA redirect 後的待處理報名
+  if(!pendingRegSesId){
+    const saved=sessionStorage.getItem('bonny_pending_reg');
+    if(saved){pendingRegSesId=saved;sessionStorage.removeItem('bonny_pending_reg');}
+  }
   try{
     if(useLocal){buddy=LOCAL.getAll('buddies').find(b=>b.lineUserId===uid)||null;}
     else{const snap=await db.collection('buddies').doc(uid).get();buddy=snap.exists?{id:snap.id,...snap.data()}:null;}
@@ -2519,16 +2550,65 @@ async function renderRoster(sid,mode,area){
   const waitlist=active.filter(r=>r.status==='waitlist').sort((a,b)=>(a.waitlistOrder||0)-(b.waitlistOrder||0));
   const paid=confirmed.filter(r=>r.paid);
   const setQ=s?(s.slots||[]).filter(sl=>sl.quota!==9999).reduce((a,sl)=>a+sl.quota,0):0;
-  const isOver=confirmed.length>setQ;
   const readonly=!canEdit('regs');
 
-  // view mode pills
+  // view mode pills + 全域重新計算按鈕
   let vmHtml='<div class="vmpills"><button class="vmp'+(mode==='all'?' act':'')+'" onclick="setRosterMode(\'all\')" style="'+(mode==='all'?'background:#555;border-color:#555':'')+'">完整名單</button>';
   if(s)s.slots.forEach((sl,i)=>{const c=sc(i);const isA=mode===sl.id;vmHtml+=`<button class="vmp${isA?' act':''}" onclick="setRosterMode('${sl.id}')" style="${isA?'background:'+c+';border-color:'+c:'border-color:'+c+';color:'+c}">${sl.name}</button>`;});
   vmHtml+='</div>';
 
+  // ── 名額摘要：完整名單 = 各時段分開；單一時段 = 該時段名額 ──
   const addCustomBtn=!readonly?`<button class="btn btn-p btn-sm" style="margin-left:auto" onclick="openCustomModal('${sid}')">⚙️ 新增客製</button>`:'';
-  const sum=`<div class="roster-summary">正選 <span class="rs-num">${confirmed.length}</span>${isOver?` <span style="color:var(--danger)">(超收 ${confirmed.length-setQ})</span>`:''} · 備取 <span class="rs-num">${waitlist.length}</span> · 已付 <span class="rs-num" style="color:var(--success)">${paid.length}</span> · 設定名額 ${setQ}${addCustomBtn}</div>`;
+  const recalcBtn=!readonly&&s&&s.slots.some(sl=>sl.combinedWith&&sl.combinedWith.length)
+    ?`<button class="btn btn-outline-p btn-sm" onclick="reCalcAllComboRegs('${sid}')" title="掃描所有 C 時段報名，把名額釋出後可晉升的子時段一次更新為正取">🔄 全部重新計算</button>`:'';
+
+  let quotaHtml='';
+  if(s){
+    if(mode==='all'){
+      // 顯示每個非合併時段的名額 + confirmed 人數
+      const nonCombo=s.slots.filter(sl=>!sl.combinedWith||!sl.combinedWith.length);
+      quotaHtml=nonCombo.map((sl,i)=>{
+        const slConfirmed=active.filter(r=>{
+          if(r.primarySlotId===sl.id&&!r.isComboReg)return r.status==='confirmed';
+          if(r.isComboReg&&r.comboChildStatuses)return r.comboChildStatuses[sl.id]==='confirmed';
+          return false;
+        }).length;
+        const cap=sl.quota===9999?(s.courts||1)*8:sl.quota;
+        const over=slConfirmed>cap;
+        return`<span style="font-size:.8rem"><span class="slot-dot" style="background:${sc(i)};width:8px;height:8px;display:inline-block;border-radius:50%;vertical-align:middle"></span> ${sl.name} <strong style="color:${over?'var(--danger)':'var(--text)'}">${slConfirmed}</strong>/${cap}${over?` <span style="color:var(--danger)">(+${slConfirmed-cap})</span>`:''}</span>`;
+      }).join(' &nbsp;·&nbsp; ');
+    }else{
+      const sl=s.slots.find(x=>x.id===mode);
+      if(sl){
+        const isCombo=sl.combinedWith&&sl.combinedWith.length;
+        if(!isCombo){
+          const cap=sl.quota===9999?(s.courts||1)*8:sl.quota;
+          // 正取人數：直接報此時段 + C時段中此子時段為confirmed
+          const slConfirmed=active.filter(r=>{
+            if(r.primarySlotId===mode&&!r.isComboReg)return r.status==='confirmed';
+            if(r.isComboReg&&r.comboChildStatuses)return r.comboChildStatuses[mode]==='confirmed';
+            return false;
+          }).length;
+          const over=slConfirmed>cap;
+          quotaHtml=`${sl.name} 設定名額 <strong>${cap}</strong> 名 · 已報 <strong style="color:${over?'var(--danger)':'var(--text)'}">${slConfirmed}</strong>${over?` <span style="color:var(--danger)">(超收${slConfirmed-cap})</span>`:''}`;
+        }else{
+          // C 時段：顯示各子時段
+          quotaHtml=sl.combinedWith.map(cid=>{
+            const child=s.slots.find(x=>x.id===cid);if(!child)return'';
+            const cap=child.quota===9999?(s.courts||1)*8:child.quota;
+            const slC=active.filter(r=>r.isComboReg&&r.comboChildStatuses&&r.comboChildStatuses[cid]==='confirmed').length;
+            return`${child.name} ${slC}/${cap}`;
+          }).join(' · ');
+        }
+      }
+    }
+  }
+  const isOver=confirmed.length>(s?(s.slots||[]).filter(sl=>sl.quota!==9999).reduce((a,sl)=>a+sl.quota,0):0);
+  const sum=`<div class="roster-summary" style="gap:10px;flex-wrap:wrap">
+    <span>正選 <span class="rs-num">${confirmed.length}</span> · 備取 <span class="rs-num">${waitlist.length}</span> · 已付 <span class="rs-num" style="color:var(--success)">${paid.length}</span></span>
+    ${quotaHtml?`<span style="color:var(--text2);font-size:.8rem">${quotaHtml}</span>`:''}
+    <span style="margin-left:auto;display:flex;gap:6px">${recalcBtn}${addCustomBtn}</span>
+  </div>`;
 
   let displayRegs;
   if(mode==='all'){displayRegs=active;}
@@ -2566,20 +2646,32 @@ async function renderRoster(sid,mode,area){
     const dSid=`data-sid="${sid}"`;
     const dSlot=`data-slotid="${r.primarySlotId}"`;
 
-    // ── C 時段整合：時段欄顯示各子時段狀態 ──
+    // ── 時段欄：現況 + 歷史變更（打叉顯示舊時段）──
     let slotDisplay='';
+    // 組建歷史變更行（adjustedAt 或 comboReCalcAt）
+    let historyHtml='';
+    if(r.adjustedAt&&r.originalSlotName){
+      const origTime=r.originalSlotStartTime&&r.originalSlotEndTime?` ${r.originalSlotStartTime}–${r.originalSlotEndTime}`:'';
+      historyHtml+=`<div style="color:var(--text3);font-size:.73rem;text-decoration:line-through;margin-top:2px">✕ ${r.originalSlotName}${origTime}</div>`;
+    }
     if(r.isComboReg&&r.comboChildStatuses&&s){
       const parts=Object.entries(r.comboChildStatuses).map(([cid,cst])=>{
         const child=s.slots.find(x=>x.id===cid);
         const childName=child?child.name:cid;
         const timeStr=child&&child.startTime?` ${child.startTime}–${child.endTime}`:'';
         const wOrder=r.comboWaitOrders&&r.comboWaitOrders[cid]?`#${r.comboWaitOrders[cid]}`:'';
-        if(cst==='confirmed')return`<span style="color:var(--success);font-size:.75rem">✓ ${childName}${timeStr}</span>`;
+        // 若此子時段在快照中是 waitlist 但現在是 confirmed → 顯示晉升標記
+        const snapshotSt=r.comboReCalcSnapshot&&r.comboReCalcSnapshot.comboChildStatuses?r.comboReCalcSnapshot.comboChildStatuses[cid]:null;
+        const wasPromoted=snapshotSt==='waitlist'&&cst==='confirmed';
+        if(cst==='confirmed'){
+          return`<span style="color:var(--success);font-size:.75rem">✓ ${childName}${timeStr}${wasPromoted?' <span style="font-size:.68rem;background:#E8F4FF;border:1px solid #BBDEFB;color:#1565C0;border-radius:3px;padding:0 4px">↑晉升</span>':''}</span>`;
+        }
         return`<span style="color:var(--warn);font-size:.75rem">⏳ ${childName}${timeStr} 候補${wOrder}</span>`;
       });
-      slotDisplay=`<span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}<div style="margin-top:3px;display:flex;flex-direction:column;gap:1px">${parts.join('')}</div>`;
+      slotDisplay=`<span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}<div style="margin-top:3px;display:flex;flex-direction:column;gap:1px">${parts.join('')}</div>${historyHtml}`;
     }else{
-      slotDisplay=`<span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}`;
+      const timeStr=r.slotStartTime&&r.slotEndTime?` <span style="color:var(--text3);font-size:.73rem">${r.slotStartTime}–${r.slotEndTime}</span>`:'';
+      slotDisplay=`<span class="slot-dot" style="background:${si>=0?sc(si):'#ccc'}"></span>${r.slotName}${timeStr}${historyHtml}`;
     }
 
     let pcell='';
@@ -2606,8 +2698,15 @@ async function renderRoster(sid,mode,area){
         ops+=`<button class="btn btn-w btn-sm rw-demote" ${dId} ${dSid} ${dSlot}>↓備取</button> `;
       }
       ops+=`<button class="btn btn-d btn-sm rw-cancel" ${dId} ${dSid}>取消</button> <button class="btn btn-w btn-sm rw-warn" ${dId} ${dSid}>警示</button> <button class="btn btn-s btn-sm rw-adjust" ${dId} ${dSid} ${dSlot}>✏️ 調整時段</button>`;
+      // 調整時段後顯示「↩ 還原調整」（所有報名，不限 C 時段）
+      if(r.adjustedAt&&r.originalSlotId&&r.originalSlotId!==r.primarySlotId){
+        ops+=` <button class="btn btn-w btn-sm rw-undo-adjust" ${dId} ${dSid} title="還原為調整前的時段：${(r.originalSlotName||'').replace(/"/g,'&quot;')}">↩ 還原調整</button>`;
+      }
       if(r.isComboReg){
         ops+=` <button class="btn btn-ok btn-sm rw-recalc" ${dId} ${dSid} title="重新讀取目前名額，將候補中的子時段晉升為正取">🔄 重新計算</button>`;
+        if(r.comboReCalcSnapshot){
+          ops+=` <button class="btn btn-w btn-sm rw-undo-recalc" ${dId} ${dSid} title="還原為重新計算前的狀態">↩ 還原晉升</button>`;
+        }
       }
     }else if(!readonly&&isCancelled){
       ops+=`<button class="btn btn-s btn-sm rw-restore" ${dId} ${dSid} ${dSlot}>還原報名</button>`;
@@ -2648,8 +2747,10 @@ async function renderRoster(sid,mode,area){
     else if(btn.classList.contains('rw-cancel'))   {cancelReg(rid,bsid);}
     else if(btn.classList.contains('rw-warn'))     {openWarnModal(name,sesname,lineuid,phone);}
     else if(btn.classList.contains('rw-restore'))  {restoreReg(rid,bsid,slotid);}
-    else if(btn.classList.contains('rw-adjust'))   {openAdjustSlotModal(rid,name,slotname,bsid,slotid);}
-    else if(btn.classList.contains('rw-recalc'))   {reCalcComboReg(rid,bsid);}
+    else if(btn.classList.contains('rw-adjust'))      {openAdjustSlotModal(rid,name,slotname,bsid,slotid);}
+    else if(btn.classList.contains('rw-undo-adjust')) {undoAdjustSlot(rid,bsid);}
+    else if(btn.classList.contains('rw-recalc'))      {reCalcComboReg(rid,bsid);}
+    else if(btn.classList.contains('rw-undo-recalc')) {undoReCalcComboReg(rid,bsid);}
   };
 }
 
@@ -2810,6 +2911,8 @@ async function confirmAdjustSlot(){
     adjustNote:note,
     originalSlotId:reg.originalSlotId||currentSlotId,
     originalSlotName:reg.originalSlotName||reg.slotName,
+    originalSlotStartTime:reg.originalSlotStartTime||(reg.slotStartTime||''),
+    originalSlotEndTime:reg.originalSlotEndTime||(reg.slotEndTime||''),
     originalFee:reg.originalFee!=null?reg.originalFee:reg.fee,
   };
   if(useLocal)LOCAL.update('registrations',regId,upd);
@@ -2847,6 +2950,62 @@ async function confirmAdjustSlot(){
   toast(`已調整為 ${newSl.name}，費用 NT$${newFee}`,'ok');
   renderRoster(sid,rosterMode,fd('reg-list-area'));
   loadAdmSes();
+}
+
+/* ── 還原時段調整（所有報名適用）── */
+async function undoAdjustSlot(regId,sid){
+  let reg;
+  if(useLocal){reg=LOCAL.getAll('registrations').find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg||!reg.adjustedAt||!reg.originalSlotId){toast('找不到調整紀錄','err');return;}
+
+  const s=sesCache.find(x=>x.id===sid);
+  const origSlot=s&&s.slots.find(x=>x.id===reg.originalSlotId);
+  const origSlotName=reg.originalSlotName||(origSlot?origSlot.name:'原時段');
+  const origTime=reg.originalSlotStartTime&&reg.originalSlotEndTime
+    ?` ${reg.originalSlotStartTime}–${reg.originalSlotEndTime}`:'';
+  const currentSlotId=reg.primarySlotId;
+
+  confirmDialog(
+    `確定還原「${reg.name}」的時段調整？\n\n目前時段：${reg.slotName}\n還原為：${origSlotName}${origTime}\n費用：NT$ ${reg.originalFee!=null?reg.originalFee:reg.fee}\n\n場次報名人數也會同步還原。`,
+    '確認還原調整','btn-w',async()=>{
+    const upd={
+      primarySlotId:reg.originalSlotId,
+      slotIds:[reg.originalSlotId],
+      slotName:origSlotName,
+      slotStartTime:reg.originalSlotStartTime||'',
+      slotEndTime:reg.originalSlotEndTime||'',
+      fee:reg.originalFee!=null?reg.originalFee:reg.fee,
+      // 清除調整紀錄
+      adjustedAt:null,adjustedBy:null,adjustNote:null,
+      originalSlotId:null,originalSlotName:null,
+      originalSlotStartTime:null,originalSlotEndTime:null,originalFee:null,
+    };
+    if(useLocal)LOCAL.update('registrations',regId,upd);
+    else await db.collection('registrations').doc(regId).update(upd);
+
+    // 更新 registered：舊時段（現在的）-1，原時段 +1（僅正選且時段有實際變動）
+    if(reg.status==='confirmed'&&reg.originalSlotId!==currentSlotId){
+      const updateSlots=(slots)=>slots.map(sl=>{
+        if(sl.id===currentSlotId)return{...sl,registered:Math.max(0,(sl.registered||1)-1)};
+        if(sl.id===reg.originalSlotId)return{...sl,registered:(sl.registered||0)+1};
+        return sl;
+      });
+      if(useLocal){
+        const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+        if(si>=0)LOCAL._store['sessions'][si].slots=updateSlots(LOCAL._store['sessions'][si].slots);
+      }else{
+        const sSnap=await db.collection('sessions').doc(sid).get();
+        if(sSnap.exists)await db.collection('sessions').doc(sid).update({slots:updateSlots(sSnap.data().slots)});
+      }
+      const ci=sesCache.findIndex(x=>x.id===sid);
+      if(ci>=0)sesCache[ci].slots=updateSlots(sesCache[ci].slots);
+    }
+
+    toast(`已還原為 ${origSlotName}`,'ok');
+    renderRoster(sid,rosterMode,fd('reg-list-area'));
+    loadAdmSes();
+  });
 }
 
 /* ── 重新計算 C 時段子時段狀態（B 名額釋出後晉升）── */
@@ -2888,26 +3047,33 @@ async function reCalcComboReg(regId,sid){
     +`\n\n確認後會更新名單並增加這些時段的報名人數。`;
 
   confirmDialog(msg,'確認晉升','btn-ok',async()=>{
+    // ── 先儲存快照（只存一層，避免多次操作累積舊快照）──
+    const snapshot={
+      comboChildStatuses:{...reg.comboChildStatuses},
+      comboWaitOrders:{...(reg.comboWaitOrders||{})},
+      status:reg.status,
+      waitlistOrder:reg.waitlistOrder||null,
+      promotedFromWaitlist:reg.promotedFromWaitlist||false,
+      snapshotAt:Date.now(),
+    };
+
     // 更新 comboChildStatuses
     const newStatuses={...reg.comboChildStatuses};
     const newWaitOrders={...(reg.comboWaitOrders||{})};
     canPromote.forEach(cid=>{
       newStatuses[cid]='confirmed';
-      delete newWaitOrders[cid]; // 晉升後移除候補號碼
+      delete newWaitOrders[cid];
     });
-
-    // 整體狀態：全部都是 confirmed → 'confirmed'，否則維持 mixed
-    const allConfirmed=Object.values(newStatuses).every(v=>v==='confirmed');
-    const newOverallStatus=allConfirmed?'confirmed':'confirmed'; // 有正取就是 confirmed
 
     const upd={
       comboChildStatuses:newStatuses,
       comboWaitOrders:newWaitOrders,
-      status:newOverallStatus,
+      status:'confirmed',
       waitlistOrder:null,
       promotedFromWaitlist:true,
       comboReCalcAt:Date.now(),
       comboReCalcBy:me?me.username:'admin',
+      comboReCalcSnapshot:snapshot,   // 快照存在這
     };
     if(useLocal)LOCAL.update('registrations',regId,upd);
     else await db.collection('registrations').doc(regId).update(upd);
@@ -2923,12 +3089,125 @@ async function reCalcComboReg(regId,sid){
       }
       const ci=sesCache.findIndex(x=>x.id===sid);
       if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);
-
-      // 重新排列此子時段的其他候補順序（讓其他人順序正確）
       await reNumberComboChildWaitlist(sid,cid);
     }
 
     toast(`已晉升：${promoteNames.join('、')} → 正取`+(stillNames.length?`，${stillNames.join('、')} 維持候補`:''),'ok');
+    renderRoster(sid,rosterMode,fd('reg-list-area'));
+    loadAdmSes();
+  });
+}
+
+/* ── 還原重新計算（單筆）── */
+async function undoReCalcComboReg(regId,sid){
+  let reg;
+  if(useLocal){reg=LOCAL.getAll('registrations').find(x=>x.id===regId);}
+  else{const snap=await db.collection('registrations').doc(regId).get();reg=snap.exists?{id:snap.id,...snap.data()}:null;}
+  if(!reg||!reg.comboReCalcSnapshot){toast('找不到還原快照','err');return;}
+
+  const snap=reg.comboReCalcSnapshot;
+  const s=sesCache.find(x=>x.id===sid);
+
+  // 找出哪些子時段是「本次計算晉升」的（快照是 waitlist → 現在是 confirmed）
+  const wasPromoted=Object.entries(snap.comboChildStatuses||{})
+    .filter(([cid,st])=>st==='waitlist'&&reg.comboChildStatuses[cid]==='confirmed')
+    .map(([cid])=>cid);
+
+  const wasPromotedNames=wasPromoted.map(cid=>{const c=s&&s.slots.find(x=>x.id===cid);return c?c.name:cid;});
+  confirmDialog(
+    `確定還原「${reg.name}」的 C 時段狀態？\n\n還原後：${wasPromotedNames.join('、')} 將從正取還原為候補。\n\n這些時段的報名人數也會同步 -1。`,
+    '確認還原','btn-w',async()=>{
+    const upd={
+      comboChildStatuses:snap.comboChildStatuses,
+      comboWaitOrders:snap.comboWaitOrders||{},
+      status:snap.status,
+      waitlistOrder:snap.waitlistOrder,
+      promotedFromWaitlist:snap.promotedFromWaitlist,
+      comboReCalcSnapshot:null,  // 清除快照
+      comboReCalcAt:null,
+      comboReCalcBy:null,
+    };
+    if(useLocal)LOCAL.update('registrations',regId,upd);
+    else await db.collection('registrations').doc(regId).update(upd);
+
+    // 還原場次 registered：晉升的子時段各 -1
+    for(const cid of wasPromoted){
+      if(useLocal){
+        const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);
+        if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(sl=>sl.id===cid?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);}
+      }else{
+        const sSnap=await db.collection('sessions').doc(sid).get();
+        if(sSnap.exists){const u2=sSnap.data().slots.map(sl=>sl.id===cid?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);await db.collection('sessions').doc(sid).update({slots:u2});}
+      }
+      const ci=sesCache.findIndex(x=>x.id===sid);
+      if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(sl=>sl.id===cid?{...sl,registered:Math.max(0,(sl.registered||1)-1)}:sl);
+      await reNumberComboChildWaitlist(sid,cid);
+    }
+
+    toast(`已還原為計算前狀態`+(wasPromotedNames.length?`：${wasPromotedNames.join('、')} → 候補`:''),'ok');
+    renderRoster(sid,rosterMode,fd('reg-list-area'));
+    loadAdmSes();
+  });
+}
+
+/* ── 全部重新計算（掃描此場次所有 C 時段報名）── */
+async function reCalcAllComboRegs(sid){
+  const s=sesCache.find(x=>x.id===sid);if(!s)return;
+  let allRegs;
+  if(useLocal){allRegs=LOCAL.getAll('registrations').filter(r=>r.sessionId===sid&&r.isComboReg&&r.status!=='cancelled');}
+  else{const snap=await db.collection('registrations').where('sessionId','==',sid).where('isComboReg','==',true).get();allRegs=[];snap.forEach(d=>allRegs.push({id:d.id,...d.data()}));}
+
+  // 找出有 waitlist 子時段的紀錄
+  const eligible=allRegs.filter(r=>r.comboChildStatuses&&Object.values(r.comboChildStatuses).some(v=>v==='waitlist'));
+  if(!eligible.length){toast('目前所有 C 時段報名都已是正取，無需計算','ok');return;}
+
+  // 預覽每筆會有什麼變化
+  const changes=eligible.map(r=>{
+    const waitCids=Object.entries(r.comboChildStatuses).filter(([,st])=>st==='waitlist').map(([cid])=>cid);
+    const canPromote=waitCids.filter(cid=>{const child=s.slots.find(x=>x.id===cid);return child&&calcAvail(s,child)>0;});
+    return{r,canPromote};
+  }).filter(x=>x.canPromote.length>0);
+
+  if(!changes.length){
+    const detail=eligible.map(r=>{
+      const waitCids=Object.entries(r.comboChildStatuses).filter(([,st])=>st==='waitlist').map(([cid])=>cid);
+      return`${r.name}：${waitCids.map(cid=>{const c=s.slots.find(x=>x.id===cid);return(c?c.name:cid)+'剩'+calcAvail(s,s.slots.find(x=>x.id===cid)||{})+'名';}).join('、')}`;
+    }).join('\n');
+    toast('目前候補時段仍無空位可晉升','err');
+    return;
+  }
+
+  const summary=changes.map(({r,canPromote})=>{
+    const names=canPromote.map(cid=>{const c=s.slots.find(x=>x.id===cid);return c?c.name:cid;});
+    return`・ ${r.name} → ${names.join('、')} 晉升正取`;
+  }).join('\n');
+
+  confirmDialog(`將對以下 ${changes.length} 筆 C 時段報名進行晉升：\n\n${summary}\n\n每筆都會個別儲存快照，可各自還原。`,`確認全部晉升（${changes.length}筆）`,'btn-ok',async()=>{
+    let successCount=0;
+    for(const{r,canPromote}of changes){
+      try{
+        const snapshot={
+          comboChildStatuses:{...r.comboChildStatuses},
+          comboWaitOrders:{...(r.comboWaitOrders||{})},
+          status:r.status,waitlistOrder:r.waitlistOrder||null,
+          promotedFromWaitlist:r.promotedFromWaitlist||false,snapshotAt:Date.now(),
+        };
+        const newStatuses={...r.comboChildStatuses};
+        const newWaitOrders={...(r.comboWaitOrders||{})};
+        canPromote.forEach(cid=>{newStatuses[cid]='confirmed';delete newWaitOrders[cid];});
+        const upd={comboChildStatuses:newStatuses,comboWaitOrders:newWaitOrders,status:'confirmed',waitlistOrder:null,promotedFromWaitlist:true,comboReCalcAt:Date.now(),comboReCalcBy:me?me.username:'admin',comboReCalcSnapshot:snapshot};
+        if(useLocal)LOCAL.update('registrations',r.id,upd);
+        else await db.collection('registrations').doc(r.id).update(upd);
+        for(const cid of canPromote){
+          if(useLocal){const si=LOCAL.getAll('sessions').findIndex(x=>x.id===sid);if(si>=0){LOCAL._store['sessions'][si].slots=LOCAL._store['sessions'][si].slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);}}
+          else{const sSnap=await db.collection('sessions').doc(sid).get();if(sSnap.exists){const u2=sSnap.data().slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);await db.collection('sessions').doc(sid).update({slots:u2});}}
+          const ci=sesCache.findIndex(x=>x.id===sid);if(ci>=0)sesCache[ci].slots=sesCache[ci].slots.map(sl=>sl.id===cid?{...sl,registered:(sl.registered||0)+1}:sl);
+          await reNumberComboChildWaitlist(sid,cid);
+        }
+        successCount++;
+      }catch(e){console.warn('reCalcAll error for',r.id,e);}
+    }
+    toast(`全部重新計算完成：${successCount} 筆已晉升`,'ok');
     renderRoster(sid,rosterMode,fd('reg-list-area'));
     loadAdmSes();
   });
@@ -3519,6 +3798,18 @@ function switchTab(t,btn){
    INIT
 ============================================================ */
 async function initApp(){
+  // ── 偵測 PWA LINE 登入跳回的情況 ──
+  // iOS Safari standalone 模式下，LINE OAuth 完成後會在普通 Safari 開啟網頁
+  // 我們偵測 ?from=line_auth 並顯示一個「回到 App」的提示橫幅
+  const urlParams=new URLSearchParams(window.location.search);
+  if(urlParams.get('from')==='line_auth'){
+    // 清除 URL 參數但不重新載入（避免 LIFF token 遺失）
+    const cleanUrl=window.location.origin+window.location.pathname;
+    window.history.replaceState({},'',cleanUrl);
+    // 顯示提示橫幅（稍後在 app 顯示後會觸發）
+    sessionStorage.setItem('bonny_show_app_hint','1');
+  }
+
   try{
     let admExists;
     if(useLocal){const m=LOCAL.get('admins')||{};admExists=!!m.admin;}
@@ -3534,6 +3825,29 @@ async function initApp(){
   loadPub();
   // 初始化 LIFF（config 載入後才有 liffId）
   await initLiff();
+  // 顯示「回到 App」提示（LINE 授權後在瀏覽器開啟的情況）
+  if(sessionStorage.getItem('bonny_show_app_hint')){
+    sessionStorage.removeItem('bonny_show_app_hint');
+    showReturnToAppBanner();
+  }
+}
+
+/* ── iOS PWA：LINE 授權後回到瀏覽器，提示用戶回到 App ── */
+function showReturnToAppBanner(){
+  // 判斷是否本身是 standalone（如果是，就不需要這個提示）
+  const isStandalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+  if(isStandalone)return;
+  // 建立提示橫幅
+  const banner=document.createElement('div');
+  banner.id='return-to-app-banner';
+  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#06C755;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 2px 12px rgba(0,0,0,.2);font-size:.88rem;font-weight:700';
+  banner.innerHTML=`
+    <span>✅ LINE 登入完成！請回到主畫面的 App 繼續報名</span>
+    <button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:5px 10px;border-radius:20px;cursor:pointer;font-weight:700;font-size:.82rem;white-space:nowrap">關閉</button>
+  `;
+  document.body.prepend(banner);
+  // 10 秒後自動消失
+  setTimeout(()=>banner.remove(),10000);
 }
 
 auth&&auth.onAuthStateChanged(u=>{if(u){_fbReady=true;initApp();}});
