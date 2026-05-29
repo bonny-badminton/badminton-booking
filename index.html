@@ -1645,20 +1645,15 @@ async function sendRegNotify(session, results, registrantName){
   const now=new Date();
   const timeStr=now.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
   const message=[
-    `🏸 新報名通知　${timeStr}`,
-    `━━━━━━━━━━━━`,
+    `🏸 新報名通知 ${timeStr}`,
     `📅 ${session.name||fmtDate(session.date,'zh')}`,
     session.location?`📍 ${session.location}`:'',
-    ``,
-    `👤 報名人：${registrantName}`,
-    personLines,
-    ``,
-    `✅ 正選 ${confirmed.length} 人${waitlist.length>0?`　⏳備取 ${waitlist.length} 人`:''}`,
-    `💰 本次合計：NT$ ${totalFee}`,
-    ``,
-    `📊 目前時段狀況`,
+    `👤 ${registrantName}`,
+    personLines.replace(/\n/g,' | '),
+    `✅ 正選${confirmed.length}人${waitlist.length>0?` ⏳備取${waitlist.length}人`:''}`,
+    `💰 NT$${totalFee}`,
     slotSummary,
-  ].filter(l=>l!==null&&l!==undefined).join('\n').replace(/\n{3,}/g,'\n\n');
+  ].filter(l=>l).join(' ／ ');
 
   const payload={
     type:'new_registration',
