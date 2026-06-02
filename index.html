@@ -292,6 +292,7 @@ tr:hover td{background:var(--bg);}
     <div class="nav-brand" id="nav-brand">🏸 <span>Bonny 羽球隊</span></div>
     <div class="nav-links">
       <button class="nb act" id="nav-pub" onclick="showPage('pub')" data-zh="場次報名" data-en="Sessions">場次報名</button>
+      <button class="nb" id="nav-ranking" onclick="showPage('ranking')" data-zh="🏆 積分榜" data-en="🏆 Rankings">🏆 積分榜</button>
       <button class="nb" id="nav-myregs" onclick="showPage('myregs')" data-zh="我的報名" data-en="My Bookings" style="display:none">我的報名</button>
       <button class="nb" id="nav-adm" onclick="showPage('adm')" style="display:none">後台管理</button>
       <!-- LINE 用戶個人資料 -->
@@ -330,6 +331,24 @@ tr:hover td{background:var(--bg);}
     <div id="myregs-result"></div>
   </div>
 
+  <!-- RANKING PAGE -->
+  <div id="page-ranking" class="page">
+    <div style="max-width:860px;margin:0 auto">
+      <div class="welcome-band">
+        <div class="welcome-title">🏆 積分榜</div>
+        <div class="welcome-sub">球員比賽積分與勝率排行</div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="display:flex;border-bottom:2px solid var(--border)">
+          <button class="tb act" id="rank-tab-pts" onclick="switchRankTab('pts',this)" style="padding:12px 20px;font-size:.85rem">🏆 積分榜</button>
+          <button class="tb" id="rank-tab-wr" onclick="switchRankTab('wr',this)" style="padding:12px 20px;font-size:.85rem">📊 勝率榜</button>
+        </div>
+        <div id="rank-loading" style="padding:32px;text-align:center;color:var(--text2)"><div class="spinner" style="margin:0 auto 8px"></div>載入中...</div>
+        <div id="rank-content" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- PROFILE PAGE -->
   <div id="page-profile" class="page">
     <div style="max-width:560px;margin:0 auto">
@@ -359,6 +378,14 @@ tr:hover td{background:var(--bg);}
         </div>
         <div class="fg" id="pf-source-other-wrap" style="display:none"><label class="fl">來源說明</label><input id="pf-source-other" class="fc"></div>
         <button class="btn btn-p" onclick="saveProfile()">儲存個人資料</button>
+      </div>
+      <!-- PERSONAL STATS CARD -->
+      <div class="card" id="profile-stats-card" style="display:none">
+        <div class="card-title mb14">🏆 我的比賽成績</div>
+        <div id="profile-stats-body"></div>
+        <div style="margin-top:12px;text-align:center">
+          <button class="btn btn-s btn-sm" onclick="showPage('ranking')">查看完整積分榜 →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -572,6 +599,7 @@ tr:hover td{background:var(--bg);}
 <nav class="mob-nav" id="mob-nav">
   <div class="mob-nav-inner">
     <button class="mnb act" id="mnb-pub" onclick="showPage('pub')"><span class="mni">🏸</span>場次報名</button>
+    <button class="mnb" id="mnb-ranking" onclick="showPage('ranking')"><span class="mni">🏆</span>積分榜</button>
     <button class="mnb" id="mnb-myregs" onclick="showPage('myregs')" style="display:none"><span class="mni">📋</span>我的報名</button>
     <button class="mnb" id="mnb-profile" onclick="showPage('profile')" style="display:none"><span class="mni">👤</span>個人資料</button>
     <button class="mnb" id="mnb-line-login" onclick="startLineLogin()"><span class="mni" style="color:#06C755">●</span>LINE登入</button>
@@ -1195,6 +1223,10 @@ function showPage(p){
     fd('nav-pub').classList.add('act');
     if(fd('mnb-pub'))fd('mnb-pub').classList.add('act');
     loadPub();
+  }else if(p==='ranking'){
+    if(fd('nav-ranking'))fd('nav-ranking').classList.add('act');
+    if(fd('mnb-ranking'))fd('mnb-ranking').classList.add('act');
+    loadRanking();
   }else if(p==='adm'){
     if(fd('nav-adm'))fd('nav-adm').classList.add('act');
     if(fd('mnb-adm'))fd('mnb-adm').classList.add('act');
@@ -1207,6 +1239,75 @@ function showPage(p){
     if(fd('mnb-profile'))fd('mnb-profile').classList.add('act');
     renderProfilePage();
   }
+}
+
+let rankCache=[];
+let rankSortMode='pts';
+async function loadRanking(){
+  const loading=fd('rank-loading');const content=fd('rank-content');
+  if(loading)loading.style.display='block';if(content)content.style.display='none';
+  try{
+    let buddies;
+    if(useLocal){buddies=LOCAL.getAll('buddies');}
+    else{const snap=await db.collection('buddies').where('matchCount','>',0).orderBy('matchCount','desc').get();buddies=[];snap.forEach(d=>buddies.push({id:d.id,...d.data()}));}
+    // Filter to those who have played at least 1 match
+    rankCache=buddies.filter(b=>(b.matchCount||0)>0);
+    renderRankTable(rankSortMode);
+    if(loading)loading.style.display='none';if(content)content.style.display='block';
+  }catch(err){
+    if(loading)loading.innerHTML='<div style="color:var(--danger);padding:24px">載入失敗</div>';
+    console.warn('loadRanking error',err);
+  }
+}
+
+function switchRankTab(mode,btn){
+  rankSortMode=mode;
+  document.querySelectorAll('#page-ranking .tb').forEach(t=>t.classList.remove('act'));
+  btn.classList.add('act');
+  renderRankTable(mode);
+}
+
+function renderRankTable(mode){
+  const content=fd('rank-content');if(!content)return;
+  const list=[...rankCache];
+  if(mode==='pts'){
+    list.sort((a,b)=>(b.matchPoints||0)-(a.matchPoints||0));
+  }else{
+    list.sort((a,b)=>{
+      const wrA=a.matchCount>0?(a.matchWins||0)/a.matchCount:0;
+      const wrB=b.matchCount>0?(b.matchWins||0)/b.matchCount:0;
+      return wrB-wrA||(b.matchPoints||0)-(a.matchPoints||0);
+    });
+  }
+  if(!list.length){content.innerHTML='<div style="padding:32px;text-align:center;color:var(--text2)">目前尚無比賽積分紀錄</div>';return;}
+  const myUid=lineUser&&lineUser.lineUserId;
+  const rows=list.map((b,i)=>{
+    const wr=b.matchCount>0?Math.round((b.matchWins||0)/b.matchCount*100):0;
+    const medal=['🥇','🥈','🥉'][i]||'';
+    const isMe=myUid&&b.lineUserId===myUid||b.id===myUid;
+    const levelTag=b.level?`<span style="font-size:.68rem;padding:1px 7px;border-radius:999px;background:var(--primary-l);color:#8B3A0A;font-weight:700;margin-left:5px">${b.level}級</span>`:'';
+    return`<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--bg2);transition:background .15s;${isMe?'background:var(--primary-l);':''}" ${isMe?'id="my-rank-row"':''}>
+      <div style="font-size:1rem;min-width:32px;text-align:center;font-weight:800;color:${i<3?'var(--primary)':'var(--text3)'}">${medal||i+1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:.9rem;display:flex;align-items:center">${b.nickname||b.lineDisplayName||'—'}${levelTag}${isMe?'<span style="font-size:.65rem;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--primary);color:#fff;font-weight:700">我</span>':''}</div>
+        <div style="font-size:.73rem;color:var(--text2);margin-top:1px">${b.matchWins||0}勝 ${b.matchLosses||0}負 · ${b.matchCount||0}場</div>
+      </div>
+      <div style="text-align:center;min-width:56px">
+        <div style="font-size:1.1rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--primary)">${b.matchPoints||0}</div>
+        <div style="font-size:.63rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px">積分</div>
+      </div>
+      <div style="text-align:center;min-width:56px">
+        <div style="font-size:1rem;font-weight:800;font-family:'Space Mono',monospace;color:var(--success)">${wr}%</div>
+        <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:3px"><div style="height:100%;background:var(--success);border-radius:2px;width:${wr}%"></div></div>
+        <div style="font-size:.63rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">勝率</div>
+      </div>
+    </div>`;
+  }).join('');
+  content.innerHTML=`<div style="padding:10px 18px 6px;display:flex;justify-content:space-between;font-size:.72rem;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.3px">
+    <span>球員</span><span>積分 ｜ 勝率</span>
+  </div>${rows}`;
+  // Scroll to self if logged in
+  if(myUid){setTimeout(()=>{const me=fd('my-rank-row');if(me)me.scrollIntoView({block:'nearest'});},100);}
 }
 function goLogin(){fd('app').style.display='none';fd('login-pg').style.display='flex';const mn=fd('mob-nav');if(mn)mn.style.display='none';}
 function backToMain(){fd('login-pg').style.display='none';fd('app').style.display='block';const mn=fd('mob-nav');if(mn)mn.style.display='';showPage('pub');}
@@ -1445,11 +1546,56 @@ function renderProfilePage(){
   if(fd('pf-source'))fd('pf-source').value=buddy.contactSource||'';
   onPfSourceChange();
   if(fd('pf-source-other'))fd('pf-source-other').value=(buddy.contactSource&&!['LINE群組','LINE社群','官方LINE','Facebook'].includes(buddy.contactSource))?buddy.contactSource:'';
+  // Personal stats card
+  renderProfileStats();
 }
 
 function onPfSourceChange(){
   const v=(fd('pf-source')||{}).value||'';
   if(fd('pf-source-other-wrap'))fd('pf-source-other-wrap').style.display=v==='other'?'block':'none';
+}
+
+function renderProfileStats(){
+  const statsCard=fd('profile-stats-card');
+  const statsBody=fd('profile-stats-body');
+  if(!statsCard||!statsBody||!buddy)return;
+  const mc=buddy.matchCount||0;
+  const wins=buddy.matchWins||0;
+  const losses=buddy.matchLosses||0;
+  const pts=buddy.matchPoints||0;
+  const wr=mc>0?Math.round(wins/mc*100):null;
+  if(mc===0){
+    statsCard.style.display='none';
+    return;
+  }
+  statsCard.style.display='block';
+  statsBody.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px">
+      <div style="background:linear-gradient(135deg,#FF9F68,#FF7A3D);border-radius:14px;padding:16px;text-align:center;color:#fff">
+        <div style="font-size:2rem;font-weight:900;font-family:'Space Mono',monospace">${pts}</div>
+        <div style="font-size:.72rem;font-weight:700;opacity:.85;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">當季積分</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#7AC77E,#4CAF50);border-radius:14px;padding:16px;text-align:center;color:#fff">
+        <div style="font-size:2rem;font-weight:900;font-family:'Space Mono',monospace">${wr!==null?wr+'%':'—'}</div>
+        <div style="font-size:.72rem;font-weight:700;opacity:.85;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">勝率</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      <div style="background:var(--bg2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:1.2rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--success)">${wins}</div>
+        <div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;margin-top:1px">勝場</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:1.2rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--danger)">${losses}</div>
+        <div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;margin-top:1px">敗場</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:1.2rem;font-weight:900;font-family:'Space Mono',monospace">${mc}</div>
+        <div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;margin-top:1px">總場數</div>
+      </div>
+    </div>
+    ${wr!==null?`<div style="margin-bottom:4px;display:flex;justify-content:space-between;font-size:.76rem;font-weight:700;color:var(--text2)"><span>勝率</span><span>${wr}%</span></div>
+    <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;background:linear-gradient(90deg,var(--success),#3AAA40);border-radius:4px;width:${wr}%;transition:width .5s ease"></div></div>`:''}`;
 }
 
 async function saveProfile(){
@@ -3679,6 +3825,42 @@ async function openBuddyDetail(id){
   const avatarHtml=b.linePictureUrl
     ?`<img src="${b.linePictureUrl}" style="width:52px;height:52px;border-radius:50%;object-fit:cover">`
     :`<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-h));display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;color:#fff">${displayName.charAt(0)}</div>`;
+  // Build match history from registration records (sessions where they played)
+  // Also look for stored matchLog entries keyed by lineUserId
+  const matchLogRaw = b.matchHistory || [];
+  const matchHistHtml = matchLogRaw.length
+    ? matchLogRaw.slice().reverse().map(m=>{
+        const aWon = m.aWins;
+        const bWon = m.bWins;
+        const isA = m.teamA && m.teamA.some(p=>p.id===uid||p.name===displayName);
+        const myTeamWon = isA ? aWon : bWon;
+        const score = m.scoreA!=null ? m.scoreA+':'+m.scoreB : '—';
+        const resultTag = m.noRecord
+          ? '<span style="font-size:.68rem;padding:2px 6px;border-radius:999px;background:#FFF3E0;border:1px solid #FFCC80;color:#E65100;font-weight:700">不計分</span>'
+          : myTeamWon
+            ? '<span style="font-size:.68rem;padding:2px 7px;border-radius:999px;background:#E6F9EA;border:1px solid #B8EBC3;color:#27A65A;font-weight:800">勝</span>'
+            : '<span style="font-size:.68rem;padding:2px 7px;border-radius:999px;background:#FFE9E7;border:1px solid #FFBDBA;color:#C62828;font-weight:800">敗</span>';
+        const pts = m.noRecord ? '—' : isA ? '+'+m.ptA+'pts' : '+'+m.ptB+'pts';
+        const teammates = isA
+          ? (m.teamA||[]).filter(p=>p.name!==displayName).map(p=>p.name).join('、')
+          : (m.teamB||[]).filter(p=>p.name!==displayName).map(p=>p.name).join('、');
+        const opponents = isA
+          ? (m.teamB||[]).map(p=>p.name).join('、')
+          : (m.teamA||[]).map(p=>p.name).join('、');
+        return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:7px;background:var(--bg)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:.74rem;color:var(--text3);font-family:'Space Mono',monospace">${m.ts||''} · ${m.courtName||''}</span>
+            <div style="display:flex;align-items:center;gap:6px">${resultTag}<span style="font-size:.74rem;font-weight:700;color:var(--primary)">${pts}</span></div>
+          </div>
+          <div style="font-size:.8rem;line-height:1.6">
+            <div><span style="color:var(--text2)">比分：</span><strong style="font-family:'Space Mono',monospace">${score}</strong></div>
+            ${teammates?`<div><span style="color:var(--text2)">隊友：</span>${teammates}</div>`:''}
+            <div><span style="color:var(--text2)">對手：</span>${opponents||'—'}</div>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="muted" style="padding:12px 0;text-align:center">尚無比賽紀錄<br><span style="font-size:.76rem">透過排場系統記錄比分後將顯示於此</span></div>';
+
   fd('mo-buddy-body').innerHTML=`
     <div class="flex-gap mb14" style="align-items:center;gap:14px">
       ${avatarHtml}
@@ -3711,12 +3893,26 @@ async function openBuddyDetail(id){
     ${warnHistHtml}
     ${!readonly?`<div class="fg"><label class="fl">管理員備註（用戶不可見）</label><textarea id="buddy-note-${id}" class="fc" rows="3" placeholder="備註...">${b.adminNote||''}</textarea><button class="btn btn-s btn-sm" style="margin-top:7px" onclick="saveBuddyNote('${id}')">儲存備註</button></div>`:`<div class="fg"><label class="fl">管理員備註</label><div style="font-size:.9rem;color:var(--text2)">${b.adminNote||'無'}</div></div>`}
     <div class="divider"></div>
-    <div class="card-title mb8">報名歷史（即將到來 + 近 30 天）</div>
-    ${histHtml}`;
+    <div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:12px">
+      <button class="tb act" id="bd-tab-hist" onclick="switchBdTab('hist')" style="font-size:.79rem;padding:6px 14px">📋 報名歷史</button>
+      <button class="tb" id="bd-tab-match" onclick="switchBdTab('match')" style="font-size:.79rem;padding:6px 14px">🏸 比賽紀錄</button>
+    </div>
+    <div id="bd-hist-content">${histHtml}</div>
+    <div id="bd-match-content" style="display:none">${matchHistHtml}</div>`;
   om('mo-buddy');
 }
 
 async function saveBuddyNote(id){const note=fd('buddy-note-'+id).value;if(useLocal)LOCAL.update('buddies',id,{adminNote:note});else await db.collection('buddies').doc(id).update({adminNote:note});toast('備註已儲存','ok');}
+
+function switchBdTab(tab){
+  const isHist=tab==='hist';
+  const histBtn=fd('bd-tab-hist');const matchBtn=fd('bd-tab-match');
+  const histDiv=fd('bd-hist-content');const matchDiv=fd('bd-match-content');
+  if(histBtn){histBtn.classList.toggle('act',isHist);}
+  if(matchBtn){matchBtn.classList.toggle('act',!isHist);}
+  if(histDiv){histDiv.style.display=isHist?'':'none';}
+  if(matchDiv){matchDiv.style.display=isHist?'none':'';}
+}
 
 /* ============================================================
    HISTORY
@@ -4010,15 +4206,17 @@ async function openCourtArrangement(sid){
     }))
   };
   localStorage.setItem('bonny_court_data',JSON.stringify(payload));
-  const w=window.open('','_blank');
-  w.document.write(buildCourtPage());
-  w.document.close();
+  const html=buildCourtPage();
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  const blobUrl=URL.createObjectURL(blob);
+  const w=window.open(blobUrl,'_blank');
+  if(w){setTimeout(()=>URL.revokeObjectURL(blobUrl),15000);}else{toast('請允許彈出視窗後再試','err');}
 }
 
 /* ── Court page writes back buddy stats via postMessage → main window listens ── */
 window.addEventListener('message',async(e)=>{
   if(!e.data||e.data.type!=='bonny_match_result')return;
-  const{results,sessionId}=e.data; // results:[{lineUserId,wins,losses,points,matchCount}]
+  const{results}=e.data;
   for(const r of results){
     if(!r.lineUserId)continue;
     try{
@@ -4028,14 +4226,22 @@ window.addEventListener('message',async(e)=>{
         updatedAt:Date.now()
       };
       if(useLocal){
-        const b=LOCAL.getAll('buddies').find(x=>x.lineUserId===r.lineUserId);
+        const b=LOCAL.getAll('buddies').find(x=>x.lineUserId===r.lineUserId||x.id===r.lineUserId);
         if(b)LOCAL.update('buddies',b.id,upd);
       }else{
         await db.collection('buddies').doc(r.lineUserId).update(upd);
       }
+      // If this is the currently logged-in user, update the buddy object live
+      if(lineUser&&lineUser.lineUserId===r.lineUserId){
+        buddy=Object.assign({},buddy,upd);
+        // Re-render profile stats if that page is open
+        if(fd('profile-stats-body'))renderProfileStats();
+      }
     }catch(e2){console.warn('buddy stat write failed',e2);}
   }
   toast('積分已同步至球友名單','ok');
+  // Refresh ranking if that page is visible
+  if(fd('page-ranking')&&fd('page-ranking').classList.contains('active'))loadRanking();
 });
 
 function buildCourtPage(){
