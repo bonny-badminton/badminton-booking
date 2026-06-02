@@ -543,8 +543,17 @@ tr:hover td{background:var(--bg);}
       <div class="card mt14" id="s-block-reset" style="display:none;border-color:#F5BCBC;">
         <div class="card-title mb8" style="color:var(--danger)">⚠️ 危險區域</div>
         <p class="muted mb14">以下操作不可逆，請謹慎操作。</p>
-        <button class="btn btn-d" onclick="openResetConfirm()" style="background:var(--danger)">🗑️ 系統重置 — 清除全部資料</button>
-        <p class="muted mt8" style="font-size:.76rem">將清除所有場次、報名紀錄、球友名單、警示名單。系統設定與帳號資料保留。</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="background:#FFF9E6;border:1px solid #FFE082;border-radius:10px;padding:12px 14px">
+            <div style="font-weight:700;font-size:.87rem;margin-bottom:4px;color:#7A4A00">🏆 積分歸零</div>
+            <p class="muted" style="font-size:.78rem;margin-bottom:10px">清除所有球友的比賽積分（matchPoints）與場數（matchCount），保留勝率歷史記錄。適合每季度或半年結算一次。</p>
+            <button class="btn btn-w btn-sm" onclick="openPointsResetConfirm()">🔄 執行積分歸零</button>
+          </div>
+          <div>
+            <button class="btn btn-d" onclick="openResetConfirm()" style="background:var(--danger)">🗑️ 系統重置 — 清除全部資料</button>
+            <p class="muted mt8" style="font-size:.76rem">將清除所有場次、報名紀錄、球友名單、警示名單。系統設定與帳號資料保留。</p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -814,6 +823,29 @@ tr:hover td{background:var(--bg);}
     <div class="mf mt14">
       <button class="btn btn-ghost" onclick="cancelReset()">取消</button>
       <button class="btn btn-d" id="btn-confirm-reset" onclick="doSystemReset()" disabled>確定清除所有資料</button>
+    </div>
+  </div>
+</div>
+
+<!-- POINTS RESET CONFIRM MODAL -->
+<div id="mo-pts-reset" class="mo">
+  <div class="modal modal-sm">
+    <button class="mc" onclick="cm('mo-pts-reset');clearInterval(ptsResetTimer)">✕</button>
+    <div class="modal-title" style="color:#7A4A00">🏆 積分歸零確認</div>
+    <div class="reset-confirm-box">
+      <div style="font-size:.9rem;font-weight:700;color:#7A4A00;margin-bottom:8px">此操作將清除：</div>
+      <div style="font-size:.84rem;color:var(--text);text-align:left;line-height:1.9">
+        ✗ 所有球友的當季積分（matchPoints）<br>
+        ✗ 所有球友的場次計數（matchCount）<br>
+        ✗ 所有球友的勝敗場次數（matchWins / matchLosses）
+      </div>
+      <div style="font-size:.8rem;color:var(--text2);margin-top:8px;line-height:1.6">管理員備註與警示紀錄將保留<br>適合每季度或半年執行一次</div>
+      <div class="reset-countdown" id="pts-reset-count">10</div>
+      <div style="font-size:.8rem;color:var(--text2)">秒後自動取消</div>
+    </div>
+    <div class="mf mt14">
+      <button class="btn btn-ghost" onclick="cm('mo-pts-reset');clearInterval(ptsResetTimer)">取消</button>
+      <button class="btn btn-w" id="btn-confirm-pts-reset" onclick="doPointsReset()" disabled style="background:var(--warn);color:#5a3c00">確定執行積分歸零</button>
     </div>
   </div>
 </div>
@@ -1766,6 +1798,48 @@ async function doSystemReset(){
   }catch(e){toast('重置失敗：'+e.message,'err');}
 }
 
+let ptsResetTimer=null;
+function openPointsResetConfirm(){
+  if(!me||me.role!=='super_admin'){toast('此功能僅主管理員可使用','err');return;}
+  fd('pts-reset-count').textContent='10';
+  fd('btn-confirm-pts-reset').disabled=true;
+  om('mo-pts-reset');
+  let count=10;
+  ptsResetTimer=setInterval(()=>{
+    count--;
+    fd('pts-reset-count').textContent=count;
+    if(count<=0){
+      clearInterval(ptsResetTimer);
+      fd('btn-confirm-pts-reset').disabled=false;
+    }
+  },1000);
+}
+async function doPointsReset(){
+  if(!me||me.role!=='super_admin'){toast('權限不足','err');return;}
+  clearInterval(ptsResetTimer);
+  try{
+    if(useLocal){
+      const buddies=LOCAL.getAll('buddies');
+      buddies.forEach(b=>{
+        LOCAL.update('buddies',b.id,{matchPoints:0,matchWins:0,matchLosses:0,matchCount:0,pointsResetAt:Date.now()});
+      });
+    }else{
+      const snap=await db.collection('buddies').get();
+      // Firestore batch limit = 500 docs
+      const batchSize=500;
+      let batch=db.batch(),i=0;
+      for(const doc of snap.docs){
+        batch.update(doc.ref,{matchPoints:0,matchWins:0,matchLosses:0,matchCount:0,pointsResetAt:Date.now()});
+        i++;
+        if(i%batchSize===0){await batch.commit();batch=db.batch();}
+      }
+      if(i%batchSize!==0)await batch.commit();
+    }
+    cm('mo-pts-reset');
+    toast('積分歸零完成！所有球友積分已重置','ok');
+  }catch(e){toast('積分歸零失敗：'+e.message,'err');}
+}
+
 /* ============================================================
    PUBLIC — load sessions
 ============================================================ */
@@ -2565,6 +2639,7 @@ async function renderRoster(sid,mode,area){
 
   // ── 名額摘要：完整名單 = 各時段分開；單一時段 = 該時段名額 ──
   const addCustomBtn=!readonly?`<button class="btn btn-p btn-sm" style="margin-left:auto" onclick="openCustomModal('${sid}')">⚙️ 新增客製</button>`:'';
+  const courtBtn=`<button class="btn btn-s btn-sm" onclick="openCourtArrangement('${sid}')" title="開啟排場系統" style="border-color:var(--accent);color:#3a7a34">🏸 排場系統</button>`;
   const recalcBtn=!readonly&&s&&s.slots.some(sl=>sl.combinedWith&&sl.combinedWith.length)
     ?`<button class="btn btn-outline-p btn-sm" onclick="reCalcAllComboRegs('${sid}')" title="掃描所有 C 時段報名，把名額釋出後可晉升的子時段一次更新為正取">🔄 全部重新計算</button>`:'';
 
@@ -2613,7 +2688,7 @@ async function renderRoster(sid,mode,area){
   const sum=`<div class="roster-summary" style="gap:10px;flex-wrap:wrap">
     <span>正選 <span class="rs-num">${confirmed.length}</span> · 備取 <span class="rs-num">${waitlist.length}</span> · 已付 <span class="rs-num" style="color:var(--success)">${paid.length}</span></span>
     ${quotaHtml?`<span style="color:var(--text2);font-size:.8rem">${quotaHtml}</span>`:''}
-    <span style="margin-left:auto;display:flex;gap:6px">${recalcBtn}${addCustomBtn}</span>
+    <span style="margin-left:auto;display:flex;gap:6px">${courtBtn}${recalcBtn}${addCustomBtn}</span>
   </div>`;
 
   let displayRegs;
@@ -3617,6 +3692,19 @@ async function openBuddyDetail(id){
       <div class="stat-card"><div class="stat-lbl">程度</div><div style="font-size:1.1rem;font-weight:700">${b.level?b.level+' 級':'—'}</div></div>
       <div class="stat-card"><div class="stat-lbl">累計報名</div><div class="stat-val">${b.totalReports||0} 次</div></div>
     </div>
+    ${(b.matchCount||0)>0?`<div style="background:linear-gradient(135deg,#FFF5EE,#FFECE0);border:1px solid #FFD0B0;border-radius:12px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:.78rem;font-weight:800;color:var(--primary);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">🏆 比賽積分紀錄</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        <div style="text-align:center"><div style="font-size:1.4rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--primary)">${b.matchPoints||0}</div><div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">積分</div></div>
+        <div style="text-align:center"><div style="font-size:1.4rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--success)">${b.matchWins||0}</div><div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">勝場</div></div>
+        <div style="text-align:center"><div style="font-size:1.4rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--danger)">${b.matchLosses||0}</div><div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">敗場</div></div>
+        <div style="text-align:center">
+          <div style="font-size:1.4rem;font-weight:900;font-family:'Space Mono',monospace;color:var(--text)">${b.matchCount>0?Math.round((b.matchWins||0)/b.matchCount*100)+'%':'—'}</div>
+          <div style="font-size:.66rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px">勝率</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;border-radius:3px;background:var(--success);width:${b.matchCount>0?Math.round((b.matchWins||0)/b.matchCount*100):0}%"></div></div>
+    </div>`:''}
     <div class="fg"><label class="fl">電話</label><div style="font-size:.9rem;font-weight:600">${b.phone||'—'}</div></div>
     <div class="fg"><label class="fl">報名來源</label><div style="font-size:.9rem">${b.contactSource||'—'}</div></div>
     <div class="fg"><label class="fl">狀態</label><div class="flex-gap" style="align-items:center;gap:8px">${b.isWarned?`<span class="badge b-warn">⚠️ 警示中 — ${b.warnReason||''}</span>${!readonly?`<button class="btn btn-ghost btn-sm" onclick="removeBuddyWarn('${b.id}')">解除警示</button>`:''}`:('<span class="badge b-confirmed">一般</span>'+(b.warnHistory&&b.warnHistory.length?'<span class="badge" style="margin-left:6px;background:#FFF5E0;border:1px solid #FFE08A;color:#C07800">有過往警示紀錄</span>':''))}</div></div>
@@ -3888,7 +3976,1091 @@ if(!auth){/* local mode already initialized */}
 
 // Auto-refresh pub page every minute to remove expired sessions
 setInterval(()=>{if(fd('page-pub')&&fd('page-pub').classList.contains('active'))loadPub();},60000);
+
+/* ============================================================
+   COURT ARRANGEMENT SYSTEM
+============================================================ */
+async function openCourtArrangement(sid){
+  const s=sesCache.find(x=>x.id===sid);
+  if(!s){toast('找不到場次資料','err');return;}
+  let allRegs;
+  if(useLocal){allRegs=LOCAL.find('registrations','sessionId',sid);}
+  else{const snap=await db.collection('registrations').where('sessionId','==',sid).get();allRegs=[];snap.forEach(d=>allRegs.push({id:d.id,...d.data()}));}
+  const active=allRegs.filter(r=>r.status==='confirmed').sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+  // Load buddy stats for each player
+  const buddyStats={};
+  for(const r of active){
+    if(!r.lineUserId)continue;
+    try{
+      let bd;
+      if(useLocal){bd=LOCAL.getAll('buddies').find(x=>x.lineUserId===r.lineUserId);}
+      else{const bSnap=await db.collection('buddies').doc(r.lineUserId).get();bd=bSnap.exists?{id:bSnap.id,...bSnap.data()}:null;}
+      if(bd)buddyStats[r.lineUserId]={wins:bd.matchWins||0,losses:bd.matchLosses||0,points:bd.matchPoints||0,matchCount:bd.matchCount||0};
+    }catch(e){}
+  }
+  const payload={
+    session:s,
+    useLocal,
+    buddyStats,
+    players:active.map(r=>({
+      id:r.id,lineUserId:r.lineUserId||'',
+      name:r.name,level:r.level||0,
+      slotId:r.primarySlotId,slotName:r.slotName||'',
+      phone:r.mainPhone||'',source:r.contactSource||''
+    }))
+  };
+  localStorage.setItem('bonny_court_data',JSON.stringify(payload));
+  const w=window.open('','_blank');
+  w.document.write(buildCourtPage());
+  w.document.close();
+}
+
+/* ── Court page writes back buddy stats via postMessage → main window listens ── */
+window.addEventListener('message',async(e)=>{
+  if(!e.data||e.data.type!=='bonny_match_result')return;
+  const{results,sessionId}=e.data; // results:[{lineUserId,wins,losses,points,matchCount}]
+  for(const r of results){
+    if(!r.lineUserId)continue;
+    try{
+      const upd={
+        matchWins:r.wins,matchLosses:r.losses,
+        matchPoints:r.points,matchCount:r.matchCount,
+        updatedAt:Date.now()
+      };
+      if(useLocal){
+        const b=LOCAL.getAll('buddies').find(x=>x.lineUserId===r.lineUserId);
+        if(b)LOCAL.update('buddies',b.id,upd);
+      }else{
+        await db.collection('buddies').doc(r.lineUserId).update(upd);
+      }
+    }catch(e2){console.warn('buddy stat write failed',e2);}
+  }
+  toast('積分已同步至球友名單','ok');
+});
+
+function buildCourtPage(){
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>🏸 排場系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FFFDF8;--bg2:#F5F3EE;--bg3:#EDEBE4;
+  --white:#fff;--primary:#FF9F68;--primary-h:#FF8F50;--primary-l:#FFE8D8;
+  --accent:#A8C3A0;--accent-d:#5C9E54;
+  --text:#2F2F2F;--text2:#7A7A7A;--text3:#B0ADA6;
+  --border:#E8E5DF;--success:#5CB85C;--warn:#FFC857;--danger:#E86A58;
+  --blue:#4A9EDE;--purple:#9B72CF;
+  --r:14px;--r-sm:8px;--r-pill:999px;
+  --shadow:0 2px 10px rgba(0,0,0,.07);--shadow-md:0 4px 18px rgba(0,0,0,.1);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+/* ── TOPBAR ── */
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 18px;height:56px;display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+.topbar-brand{font-size:1rem;font-weight:800;color:var(--primary);}
+.topbar-sub{font-size:.75rem;color:var(--text2);margin-top:1px;}
+.topbar-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--r-pill);border:none;cursor:pointer;font-size:.79rem;font-weight:700;font-family:inherit;transition:all .2s;white-space:nowrap;}
+.btn-p{background:var(--primary);color:#fff;}.btn-p:hover{background:var(--primary-h);}
+.btn-s{background:var(--bg2);color:var(--text);border:1px solid var(--border);}.btn-s:hover{background:var(--bg3);}
+.btn-ok{background:var(--success);color:#fff;}.btn-ok:hover{background:#4a9e4a;}
+.btn-w{background:var(--warn);color:#5a3c00;}.btn-w:hover{background:#f5b800;}
+.btn-d{background:var(--danger);color:#fff;}.btn-d:hover{background:#c85040;}
+.btn-accent{background:var(--accent);color:#1a4218;border:none;}.btn-accent:hover{background:var(--accent-d);color:#fff;}
+.btn-ghost{background:transparent;border:1.5px solid var(--border);color:var(--text2);}.btn-ghost:hover{border-color:var(--text2);}
+.btn-blue{background:var(--blue);color:#fff;}.btn-blue:hover{background:#3a8ece;}
+.btn-sm{padding:4px 10px;font-size:.73rem;}
+/* ── LAYOUT ── */
+.layout{display:grid;grid-template-columns:1fr 320px;min-height:calc(100vh - 56px);}
+@media(max-width:860px){.layout{grid-template-columns:1fr;}}
+.main-area{padding:16px;overflow-y:auto;}
+.sidebar{background:var(--white);border-left:1px solid var(--border);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
+/* ── STATS ── */
+.stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.stat-item{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:8px 12px;flex:1;min-width:60px;text-align:center;box-shadow:var(--shadow);}
+.stat-v{font-size:1.3rem;font-weight:900;font-family:'Space Mono',monospace;}
+.stat-l{font-size:.65rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:1px;}
+/* ── COURT CARD ── */
+.courts-wrap{display:flex;flex-direction:column;gap:14px;}
+.court-card{background:var(--white);border:2px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);transition:box-shadow .2s;}
+.court-card:hover{box-shadow:var(--shadow-md);}
+.court-header{background:linear-gradient(135deg,#3d8e40,#2d6e30);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.court-name{font-size:.92rem;font-weight:800;}
+.court-badge{font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:var(--r-pill);background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);}
+.court-body{padding:12px 14px;}
+/* ── TEAMS LAYOUT ── */
+.teams-wrap{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:stretch;margin-bottom:10px;}
+.team-col{display:flex;flex-direction:column;gap:6px;}
+.team-label{text-align:center;font-size:.68rem;font-weight:800;padding:3px 0;border-radius:5px;letter-spacing:.3px;}
+.team-a-lbl{background:#EAF4FF;color:#1a5a8e;}
+.team-b-lbl{background:#FFF0F0;color:#8e1a1a;}
+.vs-col{display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:900;color:var(--text3);padding:0 2px;}
+.court-pos{border:2px dashed var(--border);border-radius:10px;padding:7px 9px;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg);transition:all .18s;cursor:default;position:relative;}
+.court-pos.team-a{border-color:#BBDAFF;}
+.court-pos.team-a.occupied{border-style:solid;border-color:#4A9EDE;background:#EAF4FF;}
+.court-pos.team-b{border-color:#FFBBBB;}
+.court-pos.team-b.occupied{border-style:solid;border-color:#E86A58;background:#FFF0F0;}
+.court-pos.drag-over{border-color:var(--primary)!important;background:var(--primary-l)!important;transform:scale(1.04);}
+.pos-label{font-size:.62rem;font-weight:700;color:var(--text3);margin-bottom:2px;letter-spacing:.3px;}
+.player-chip{display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;}
+.player-name{font-size:.8rem;font-weight:700;color:var(--text);max-width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.player-level{font-size:.65rem;padding:1px 6px;border-radius:var(--r-pill);font-weight:700;}
+.level-a{background:#DAEEFF;color:#1a5a8e;}
+.level-b{background:#FFE5E5;color:#8e1a1a;}
+.player-stats{font-size:.62rem;color:var(--text3);margin-top:1px;}
+/* ── LEVEL SUM BAR ── */
+.level-sum-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:8px;font-size:.78rem;gap:6px;}
+.lsb-team{font-weight:800;display:flex;align-items:center;gap:5px;}
+.lsb-vs{color:var(--text3);font-size:.72rem;}
+.lsb-handi{font-size:.72rem;color:var(--text2);margin-left:auto;}
+.handi-badge{padding:2px 8px;border-radius:var(--r-pill);font-size:.7rem;font-weight:700;}
+.handi-a{background:#DAEEFF;color:#1a5a8e;}
+.handi-b{background:#FFE5E5;color:#8e1a1a;}
+.handi-even{background:var(--bg3);color:var(--text2);}
+/* ── COURT ACTIONS ── */
+.court-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--bg2);margin-top:2px;}
+/* ── QUEUE ── */
+.queue-section{background:var(--white);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);margin-top:14px;}
+.queue-header{background:linear-gradient(135deg,#FF9F68,#FF8F50);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;}
+.queue-rows{display:flex;flex-direction:column;}
+.queue-row{border-bottom:1px solid var(--bg2);padding:10px 14px;display:flex;align-items:center;gap:9px;transition:background .15s;}
+.queue-row:last-child{border-bottom:none;}
+.queue-row:hover{background:var(--bg);}
+.queue-num{font-family:'Space Mono',monospace;font-size:.82rem;font-weight:700;color:var(--primary);min-width:22px;}
+.queue-players{display:flex;gap:5px;flex-wrap:wrap;flex:1;}
+.q-chip{display:flex;align-items:center;gap:3px;border-radius:8px;padding:3px 8px;font-size:.77rem;}
+.q-chip-a{background:#EAF4FF;border:1px solid #BBDAFF;color:#1a5a8e;}
+.q-chip-b{background:#FFF0F0;border:1px solid #FFBBBB;color:#8e1a1a;}
+.queue-actions{display:flex;gap:5px;}
+/* ── SIDEBAR PLAYERS ── */
+.section-title{font-size:.8rem;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;}
+.player-list{display:flex;flex-direction:column;gap:5px;}
+.sidebar-player{background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:7px 10px;display:flex;align-items:center;gap:8px;cursor:grab;transition:all .18s;user-select:none;}
+.sidebar-player:hover{border-color:var(--primary);background:var(--primary-l);}
+.sidebar-player:active{cursor:grabbing;opacity:.7;}
+.sp-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;color:#fff;flex-shrink:0;}
+.sp-info{flex:1;min-width:0;}
+.sp-name{font-size:.82rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sp-meta{font-size:.68rem;color:var(--text2);}
+.sp-pts{font-size:.65rem;font-family:'Space Mono',monospace;color:var(--primary);font-weight:700;}
+.sp-actions{display:flex;gap:3px;}
+.rest-badge{font-size:.63rem;padding:2px 6px;border-radius:var(--r-pill);background:#FFF3CD;border:1px solid #FFE08A;color:#7A4A00;font-weight:700;}
+.ready-badge{font-size:.63rem;padding:2px 6px;border-radius:var(--r-pill);background:#E6F9EA;border:1px solid #B8EBC3;color:#1a6b2a;font-weight:700;}
+/* ── MODAL ── */
+.mo-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;}
+.mo-box{background:var(--white);border-radius:18px;padding:22px;width:100%;max-width:480px;box-shadow:0 8px 40px rgba(0,0,0,.18);animation:mIn .2s ease;max-height:90vh;overflow-y:auto;}
+.mo-box-lg{max-width:640px;}
+@keyframes mIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.mo-title{font-size:1rem;font-weight:800;margin-bottom:14px;}
+.mo-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
+.fc{width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:.84rem;outline:none;transition:border-color .2s;}
+.fc:focus{border-color:var(--primary);}
+.fl{display:block;font-size:.76rem;font-weight:600;color:var(--text2);margin-bottom:4px;}
+.fg{margin-bottom:12px;}
+select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23ABABAB' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;}
+/* ── SCORE INPUT ── */
+.score-entry{display:grid;grid-template-columns:1fr 60px auto 60px 1fr;align-items:center;gap:10px;margin:14px 0;}
+.score-team-name{font-size:.85rem;font-weight:800;text-align:center;}
+.score-input{text-align:center;font-size:1.4rem;font-weight:900;font-family:'Space Mono',monospace;border:2px solid var(--border);border-radius:10px;padding:8px;width:60px;outline:none;transition:border-color .2s;}
+.score-input:focus{border-color:var(--primary);}
+.score-vs{font-size:.85rem;font-weight:800;color:var(--text3);text-align:center;}
+/* ── HANDICAP INFO ── */
+.handi-info{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;line-height:1.7;}
+/* ── POINTS TABLE ── */
+.pts-table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:8px;}
+.pts-table th{padding:7px 10px;text-align:left;border-bottom:2px solid var(--border);color:var(--text2);font-size:.72rem;text-transform:uppercase;letter-spacing:.3px;background:var(--bg2);}
+.pts-table td{padding:7px 10px;border-bottom:1px solid var(--bg2);}
+.pts-table tr:last-child td{border-bottom:none;}
+.pts-table tr:hover td{background:var(--bg);}
+.pts-win{color:var(--success);font-weight:800;}
+.pts-lose{color:var(--danger);font-weight:800;}
+.pts-neutral{color:var(--text2);}
+.wr-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:3px;width:60px;}
+.wr-fill{height:100%;border-radius:3px;background:var(--success);}
+/* ── TOAST ── */
+.toast-wrap{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:9999;}
+.toast-msg{padding:10px 16px;border-radius:10px;font-size:.8rem;font-weight:700;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.15);animation:tIn .3s ease;}
+@keyframes tIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+.t-ok{background:var(--success);}
+.t-i{background:var(--text);}
+.t-w{background:var(--warn);color:#5a3c00;}
+/* ── MISC ── */
+.empty-state{padding:20px;text-align:center;color:var(--text2);font-size:.8rem;}
+.divider{border:none;border-top:1px solid var(--border);margin:12px 0;}
+.al{padding:9px 12px;border-radius:8px;font-size:.8rem;margin-bottom:10px;}
+.al-i{background:var(--primary-l);border:1px solid #FFD0B0;color:#9B4A00;}
+.al-s{background:#E6F9EA;border:1px solid #B8EBC3;color:#27A65A;}
+.tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:14px;}
+.tab{padding:7px 14px;background:none;border:none;font-family:inherit;font-size:.79rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;}
+.tab.act{color:var(--primary);border-bottom-color:var(--primary);}
+.bind-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;font-size:.8rem;}
+.match-log-entry{padding:8px 12px;border-radius:8px;background:var(--bg2);margin-bottom:6px;font-size:.78rem;line-height:1.55;}
+.ml-result-win{color:var(--success);font-weight:800;}
+.ml-result-lose{color:var(--danger);font-weight:800;}
+.ml-no-record{font-size:.68rem;padding:2px 7px;border-radius:var(--r-pill);background:#FFF3E0;border:1px solid #FFCC80;color:#E65100;font-weight:700;}
+</style>
+</head>
+<body>
+<div id="toast-wrap" class="toast-wrap"></div>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-brand">🏸 排場系統</div>
+    <div class="topbar-sub" id="ses-subtitle">載入中...</div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-s btn-sm" onclick="showSlotFilter()">⏱ 時段篩選</button>
+    <button class="btn btn-s btn-sm" onclick="showBindings()">🔗 人員綁定</button>
+    <button class="btn btn-s btn-sm" onclick="showMatchLog()">📊 比賽記錄</button>
+    <button class="btn btn-s btn-sm" onclick="showLeaderboard()">🏆 積分榜</button>
+    <button class="btn btn-accent btn-sm" onclick="autoArrange()">⚡ 自動排場</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="main-area">
+    <div class="stat-row" id="stat-row"></div>
+    <div class="courts-wrap" id="courts-wrap"></div>
+    <div class="queue-section" id="queue-section">
+      <div class="queue-header">
+        <span style="font-size:.88rem;font-weight:800">排隊等候區</span>
+        <span id="queue-count-badge" style="font-size:.76rem;font-weight:700;background:rgba(255,255,255,.25);padding:2px 10px;border-radius:999px">0 組</span>
+      </div>
+      <div id="queue-rows"></div>
+    </div>
+  </div>
+  <div class="sidebar">
+    <div>
+      <div class="section-title">
+        <span>候場人員</span>
+        <button class="btn btn-sm btn-s" onclick="showAddBench()">+ 加入</button>
+      </div>
+      <div id="bench-list" class="player-list"><div class="empty-state">無候場人員</div></div>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border)">
+    <div>
+      <div class="section-title"><span>未分配球員</span></div>
+      <div id="unassigned-list" class="player-list"></div>
+    </div>
+  </div>
+</div>
+
+<div id="mo-overlay" class="mo-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div id="mo-box" class="mo-box"></div>
+</div>
+
+<script>
+/* ═══════════════ STATE ═══════════════ */
+let SESSION=null,ALL_PLAYERS=[],FILTERED_PLAYERS=[];
+let COURTS=[];
+let QUEUE=[];
+let BENCH=[];
+let UNASSIGNED=[];
+let BINDINGS=[];
+let MATCH_LOG=[];   // [{id,courtName,ts,teamA:[player],teamB:[player],scoreA,scoreB,handicapDiff,noRecord,pointsAwarded:[{playerId,delta}]}]
+let PLAYER_STATS={};// {playerId:{wins,losses,points,matchCount,lineUserId}}
+let roundNum=0;
+let currentSlotFilter='all';
+let dragSrc=null;
+const HANDICAP_PER_LEVEL=2; // 每等級讓分
+
+/* ═══════════════ CONSTANTS ═══════════════ */
+const COLORS=['#FF9F68','#4A9EDE','#9B72CF','#5CB85C','#E86A58','#26C6DA','#F5A623','#EC407A','#78909C','#8D6E63'];
+const LEVEL_LABELS={0:'—'};
+for(let i=1;i<=18;i++)LEVEL_LABELS[i]=i+'級';
+
+/* ═══════════════ INIT ═══════════════ */
+window.onload=function(){
+  const raw=localStorage.getItem('bonny_court_data');
+  if(!raw){document.body.innerHTML='<div style="padding:48px;text-align:center;color:#999;font-size:.9rem">找不到場次資料，請從後台重新開啟。</div>';return;}
+  const data=JSON.parse(raw);
+  SESSION=data.session;
+  const bs=data.buddyStats||{};
+  ALL_PLAYERS=data.players.map((p,i)=>({
+    ...p,
+    played:0,resting:0,
+    color:COLORS[i%COLORS.length],
+    initials:(p.name||'?').slice(0,1)
+  }));
+  // Init player stats from buddy records
+  ALL_PLAYERS.forEach(p=>{
+    const bd=p.lineUserId&&bs[p.lineUserId];
+    PLAYER_STATS[p.id]={
+      wins:bd?bd.wins:0,
+      losses:bd?bd.losses:0,
+      points:bd?bd.points:0,
+      matchCount:bd?bd.matchCount:0,
+      lineUserId:p.lineUserId||''
+    };
+  });
+  FILTERED_PLAYERS=[...ALL_PLAYERS];
+  document.getElementById('ses-subtitle').textContent=(SESSION.name||SESSION.date)+(SESSION.location?' · '+SESSION.location:'');
+  const numCourts=SESSION.courts||1;
+  for(let i=0;i<numCourts;i++){
+    COURTS.push({id:'court_'+i,name:'第 '+(i+1)+' 面',
+      teamA:[null,null],   // positions 0,1
+      teamB:[null,null]    // positions 2,3
+    });
+  }
+  UNASSIGNED=[...FILTERED_PLAYERS];
+  render();
+};
+
+/* ═══════════════ HANDICAP & POINTS CALC ═══════════════ */
+function teamLevelSum(team){return team.reduce((s,p)=>s+(p?p.level||0:0),0);}
+
+function calcHandicap(teamA,teamB){
+  // positive = A should win by this margin to "beat expectation"
+  const diff=teamLevelSum(teamA)-teamLevelSum(teamB);
+  return diff*HANDICAP_PER_LEVEL; // A handicap (points they should give up)
+}
+
+// Base points for winning
+const BASE_WIN_PTS=10;
+const BASE_LOSE_PTS=2; // participation
+
+function calcPoints(scoreA,scoreB,teamA,teamB,noRecord){
+  if(noRecord)return{teamADelta:0,teamBDelta:0,info:'（不計入積分）'};
+  const levelSumA=teamLevelSum(teamA);
+  const levelSumB=teamLevelSum(teamB);
+  const handicap=calcHandicap(teamA,teamB); // points A "should" win by
+  const actualDiff=scoreA-scoreB; // positive = A wins
+
+  let ptA=BASE_LOSE_PTS,ptB=BASE_LOSE_PTS;
+  const aWins=scoreA>scoreB;
+  const bWins=scoreB>scoreA;
+
+  // Level diff between teams
+  const levelDiff=Math.abs(levelSumA-levelSumB);
+  const favouredIsA=levelSumA>=levelSumB;
+  const favoured=favouredIsA?'A':'B';
+
+  if(aWins){
+    if(favouredIsA){
+      // A favoured & wins → check if won by more than handicap
+      const margin=actualDiff-handicap;
+      ptA=margin>0?BASE_WIN_PTS+Math.round(margin*0.5):BASE_WIN_PTS;
+      ptB=BASE_LOSE_PTS;
+    }else{
+      // A was underdog & wins → big bonus
+      const upset=handicap-actualDiff; // how much they beat odds by (handicap negative here means B favoured)
+      const absHandicap=Math.abs(handicap);
+      ptA=BASE_WIN_PTS+Math.round(absHandicap*1.2)+Math.round(actualDiff*0.3);
+      ptB=Math.max(0,BASE_LOSE_PTS-Math.round(actualDiff*0.2));
+    }
+  }else if(bWins){
+    if(!favouredIsA){
+      // B favoured & wins
+      const margin=(-actualDiff)-Math.abs(handicap);
+      ptB=margin>0?BASE_WIN_PTS+Math.round(margin*0.5):BASE_WIN_PTS;
+      ptA=BASE_LOSE_PTS;
+    }else{
+      // B was underdog & wins → big bonus
+      const absHandicap=Math.abs(handicap);
+      ptB=BASE_WIN_PTS+Math.round(absHandicap*1.2)+Math.round((-actualDiff)*0.3);
+      ptA=Math.max(0,BASE_LOSE_PTS-Math.round((-actualDiff)*0.2));
+    }
+  }else{
+    // draw
+    ptA=Math.round(BASE_WIN_PTS*0.6);ptB=ptA;
+  }
+  return{teamADelta:ptA,teamBDelta:ptB,aWins,bWins,handicap,levelSumA,levelSumB};
+}
+
+/* ═══════════════ RENDER ═══════════════ */
+function render(){
+  renderStats();
+  renderCourts();
+  renderQueue();
+  renderBench();
+  renderUnassigned();
+}
+
+function renderStats(){
+  const playing=COURTS.reduce((a,c)=>a+[...c.teamA,...c.teamB].filter(p=>p).length,0);
+  const queuing=QUEUE.reduce((a,q)=>a+q.group.length,0);
+  const benching=BENCH.length;
+  document.getElementById('stat-row').innerHTML=
+    \`<div class="stat-item"><div class="stat-v" style="color:var(--success)">\${playing}</div><div class="stat-l">場上</div></div>
+    <div class="stat-item"><div class="stat-v" style="color:var(--primary)">\${queuing}</div><div class="stat-l">排隊</div></div>
+    <div class="stat-item"><div class="stat-v" style="color:var(--warn)">\${benching}</div><div class="stat-l">休息</div></div>
+    <div class="stat-item"><div class="stat-v">\${UNASSIGNED.length}</div><div class="stat-l">未分配</div></div>
+    <div class="stat-item"><div class="stat-v">\${MATCH_LOG.length}</div><div class="stat-l">已賽場</div></div>\`;
+}
+
+function playerPosHtml(p,team,pi,ci){
+  const tClass='team-'+team;
+  const lvlClass='level-'+team;
+  const da=\`draggable="true" ondragstart="onDragStart(event,{type:'court',courtIdx:\${ci},team:'\${team}',posIdx:\${pi}})" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event,{type:'court',courtIdx:\${ci},team:'\${team}',posIdx:\${pi}})"\`;
+  const label=team==='a'?(pi===0?'前':'後'):(pi===0?'前':'後');
+  if(p){
+    const st=PLAYER_STATS[p.id];
+    const wr=st&&st.matchCount>0?Math.round(st.wins/st.matchCount*100)+'%':'—';
+    const pts=st?st.points:0;
+    return\`<div class="court-pos \${tClass} occupied" \${da}>
+      <div class="pos-label">\${label}</div>
+      <div class="player-chip">
+        <div class="player-name">\${p.name}</div>
+        <div class="player-level \${lvlClass}">\${LEVEL_LABELS[p.level]||'—'}</div>
+        <div class="player-stats">勝率:\${wr} \${pts}pts</div>
+      </div>
+      <button onclick="removeFromCourt(\${ci},'\${team}',\${pi})" style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:.7rem;color:var(--text3);padding:1px;line-height:1">✕</button>
+    </div>\`;
+  }else{
+    return\`<div class="court-pos \${tClass}" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event,{type:'court',courtIdx:\${ci},team:'\${team}',posIdx:\${pi}})">
+      <div class="pos-label">\${label}</div>
+      <div style="color:var(--text3);font-size:.72rem;margin-top:2px">拖放或點擊</div>
+    </div>\`;
+  }
+}
+
+function renderCourts(){
+  const wrap=document.getElementById('courts-wrap');
+  wrap.innerHTML=COURTS.map((c,ci)=>{
+    const allPlayers=[...c.teamA,...c.teamB].filter(p=>p);
+    const filledA=c.teamA.filter(p=>p).length;
+    const filledB=c.teamB.filter(p=>p).length;
+    const filled=filledA+filledB;
+    const sumA=teamLevelSum(c.teamA);
+    const sumB=teamLevelSum(c.teamB);
+    const handicap=calcHandicap(c.teamA,c.teamB);
+    // Status badge
+    const badge=filled===4?'<span class="court-badge">4/4 ✓</span>':
+      filled>0?\`<span class="court-badge">\${filled}/4</span>\`:
+      '<span class="court-badge">空場</span>';
+    // Level sum + handicap bar
+    let handiHtml='';
+    if(filled===4){
+      const diff=sumA-sumB;
+      const handicapLabel=diff===0?'<span class="handi-badge handi-even">等級相當</span>':
+        diff>0?\`<span class="handi-badge handi-a">A隊讓 \${Math.abs(handicap)} 分</span>\`:
+        \`<span class="handi-badge handi-b">B隊讓 \${Math.abs(handicap)} 分</span>\`;
+      handiHtml=\`<div class="level-sum-bar">
+        <div class="lsb-team" style="color:#1a5a8e">🔵 A隊 \${sumA}級</div>
+        <div class="lsb-vs">VS</div>
+        <div class="lsb-team" style="color:#8e1a1a">🔴 B隊 \${sumB}級</div>
+        <div class="lsb-handi">\${handicapLabel}</div>
+      </div>\`;
+    }
+    return\`<div class="court-card">
+      <div class="court-header">
+        <span class="court-name">🏸 \${c.name}</span>
+        \${badge}
+      </div>
+      <div class="court-body">
+        \${handiHtml}
+        <div class="teams-wrap">
+          <div class="team-col">
+            <div class="team-label team-a-lbl">🔵 A 隊</div>
+            \${c.teamA.map((p,pi)=>playerPosHtml(p,'a',pi,ci)).join('')}
+          </div>
+          <div class="vs-col">VS</div>
+          <div class="team-col">
+            <div class="team-label team-b-lbl">🔴 B 隊</div>
+            \${c.teamB.map((p,pi)=>playerPosHtml(p,'b',pi,ci)).join('')}
+          </div>
+        </div>
+        <div class="court-actions">
+          <button class="btn btn-sm btn-s" onclick="clearCourt(\${ci})">清空</button>
+          <button class="btn btn-sm btn-s" onclick="swapTeams(\${ci})">⇄ 換隊</button>
+          <button class="btn btn-sm btn-w" onclick="openScoreModal(\${ci},false)">📝 輸入比分</button>
+          <button class="btn btn-sm btn-accent" onclick="courtDoneQuick(\${ci})">✓ 打完（不計分）</button>
+        </div>
+      </div>
+    </div>\`;
+  }).join('');
+}
+
+function renderQueue(){
+  const rows=document.getElementById('queue-rows');
+  const badge=document.getElementById('queue-count-badge');
+  badge.textContent=QUEUE.length+' 組';
+  if(!QUEUE.length){rows.innerHTML='<div class="empty-state">目前無排隊人員</div>';return;}
+  rows.innerHTML=QUEUE.map((q,qi)=>{
+    const aChips=q.group.slice(0,2).map(p=>p?\`<div class="q-chip q-chip-a" draggable="true" ondragstart="onDragStart(event,{type:'queue',queueIdx:\${qi},playerId:'\${p.id}'})">\${p.name} <span style="font-size:.65rem">\${p.level}級</span></div>\`:'').join('');
+    const bChips=q.group.slice(2,4).map(p=>p?\`<div class="q-chip q-chip-b" draggable="true" ondragstart="onDragStart(event,{type:'queue',queueIdx:\${qi},playerId:'\${p.id}'})">\${p.name} <span style="font-size:.65rem">\${p.level}級</span></div>\`:'').join('');
+    const empty=[...Array(Math.max(0,4-q.group.length))].map(()=>'<div class="q-chip" style="background:var(--bg3);border:1px dashed var(--border);color:var(--text3);font-size:.72rem">空</div>').join('');
+    return\`<div class="queue-row" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropQueue(event,\${qi})">
+      <span class="queue-num">#\${qi+1}</span>
+      <div class="queue-players">\${aChips}\${bChips}\${empty}</div>
+      <div class="queue-actions">
+        <button class="btn btn-sm btn-ok" onclick="promoteQueue(\${qi})">↑ 上場</button>
+        <button class="btn btn-sm btn-d" onclick="removeQueue(\${qi})">✕</button>
+      </div>
+    </div>\`;
+  }).join('');
+}
+
+function renderBench(){
+  const el=document.getElementById('bench-list');
+  if(!BENCH.length){el.innerHTML='<div class="empty-state">無休息人員</div>';return;}
+  el.innerHTML=BENCH.map((p,i)=>{
+    const st=PLAYER_STATS[p.id];
+    const pts=st?st.points:0;
+    return\`<div class="sidebar-player" draggable="true" ondragstart="onDragStart(event,{type:'bench',idx:\${i}})">
+      <div class="sp-avatar" style="background:\${p.color}">\${p.initials}</div>
+      <div class="sp-info">
+        <div class="sp-name">\${p.name}</div>
+        <div class="sp-meta">\${LEVEL_LABELS[p.level]||'—'}</div>
+        <div class="sp-pts">\${pts} pts · \${p.played||0}場</div>
+      </div>
+      <div class="sp-actions">
+        \${p.resting>0?'<span class="rest-badge">休'+p.resting+'</span>':'<span class="ready-badge">就緒</span>'}
+        <button class="btn btn-sm btn-s" onclick="moveToQueue(\${i},'bench')">排隊</button>
+      </div>
+    </div>\`;
+  }).join('');
+}
+
+function renderUnassigned(){
+  const el=document.getElementById('unassigned-list');
+  if(!UNASSIGNED.length){el.innerHTML='<div class="empty-state" style="padding:8px;font-size:.76rem">所有球員已分配</div>';return;}
+  el.innerHTML=UNASSIGNED.map((p,i)=>{
+    const st=PLAYER_STATS[p.id];
+    const pts=st?st.points:0;
+    return\`<div class="sidebar-player" draggable="true" ondragstart="onDragStart(event,{type:'unassigned',idx:\${i}})">
+      <div class="sp-avatar" style="background:\${p.color}">\${p.initials}</div>
+      <div class="sp-info">
+        <div class="sp-name">\${p.name}</div>
+        <div class="sp-meta">\${LEVEL_LABELS[p.level]||'—'}</div>
+        <div class="sp-pts">\${pts} pts</div>
+      </div>
+      <div class="sp-actions">
+        <button class="btn btn-sm btn-s" onclick="moveToQueue(\${i},'unassigned')">排隊</button>
+        <button class="btn btn-sm btn-s" onclick="moveToBench(\${i},'unassigned')">候場</button>
+      </div>
+    </div>\`;
+  }).join('');
+}
+
+/* ═══════════════ SCORE MODAL ═══════════════ */
+function openScoreModal(ci,noRecordDefault){
+  const c=COURTS[ci];
+  const allPlayers=[...c.teamA,...c.teamB].filter(p=>p);
+  if(allPlayers.length<2){toast('場上人員不足，無法記錄比分','w');return;}
+  const sumA=teamLevelSum(c.teamA);
+  const sumB=teamLevelSum(c.teamB);
+  const handi=calcHandicap(c.teamA,c.teamB);
+  const handiDesc=handi===0?'等級相當，無讓分':
+    handi>0?\`A隊（\${sumA}級）應讓 B隊（\${sumB}級）<strong>\${handi} 分</strong>，若實際贏分超過此值則符合等級表現\`:
+    \`B隊（\${sumB}級）應讓 A隊（\${sumA}級）<strong>\${Math.abs(handi)} 分</strong>，若實際贏分超過此值則符合等級表現\`;
+  const namesA=c.teamA.filter(p=>p).map(p=>p.name).join('、')||'（空）';
+  const namesB=c.teamB.filter(p=>p).map(p=>p.name).join('、')||'（空）';
+  openModal(\`<div class="mo-title">📝 \${c.name} — 輸入比分</div>
+    <div class="handi-info">
+      <div style="font-weight:700;margin-bottom:4px">🔢 讓分說明（每等級差 \${HANDICAP_PER_LEVEL} 分讓分）</div>
+      \${handiDesc}
+    </div>
+    <div class="score-entry">
+      <div class="score-team-name" style="color:#1a5a8e">🔵 A隊<br><span style="font-size:.72rem;font-weight:500">\${namesA}</span></div>
+      <input id="sc-a" type="number" class="score-input" value="21" min="0" max="99" style="border-color:#BBDAFF">
+      <div class="score-vs">：</div>
+      <input id="sc-b" type="number" class="score-input" value="0" min="0" max="99" style="border-color:#FFBBBB">
+      <div class="score-team-name" style="color:#8e1a1a">🔴 B隊<br><span style="font-size:.72rem;font-weight:500">\${namesB}</span></div>
+    </div>
+    <div id="score-preview" style="margin-top:6px;font-size:.8rem;color:var(--text2);text-align:center"></div>
+    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg2);border-radius:8px;cursor:pointer;margin-top:10px;font-size:.83rem;">
+      <input type="checkbox" id="no-record" \${noRecordDefault?'checked':''} style="accent-color:var(--primary);width:16px;height:16px">
+      <div>
+        <div style="font-weight:700">此場不計入勝率與積分</div>
+        <div style="font-size:.73rem;color:var(--text2)">管理員手動標記（例如等級差異過大）</div>
+      </div>
+    </label>
+    <div class="mo-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn btn-p" onclick="submitScore(\${ci})">確認結算 ✓</button>
+    </div>\`,'lg');
+  // Live preview
+  const previewFn=()=>{
+    const sa=parseInt(document.getElementById('sc-a')?.value)||0;
+    const sb=parseInt(document.getElementById('sc-b')?.value)||0;
+    const nr=document.getElementById('no-record')?.checked;
+    const res=calcPoints(sa,sb,c.teamA,c.teamB,nr);
+    const el=document.getElementById('score-preview');
+    if(el){
+      if(nr){el.textContent='（不計入積分）';return;}
+      const winnerText=res.aWins?'🔵 A隊勝':res.bWins?'🔴 B隊勝':'平手';
+      el.innerHTML=\`\${winnerText} ｜ A隊 +\${res.teamADelta}pts ｜ B隊 +\${res.teamBDelta}pts\`;
+    }
+  };
+  setTimeout(()=>{
+    document.getElementById('sc-a')?.addEventListener('input',previewFn);
+    document.getElementById('sc-b')?.addEventListener('input',previewFn);
+    document.getElementById('no-record')?.addEventListener('change',previewFn);
+    previewFn();
+  },50);
+}
+
+function submitScore(ci){
+  const c=COURTS[ci];
+  const sa=parseInt(document.getElementById('sc-a')?.value)||0;
+  const sb=parseInt(document.getElementById('sc-b')?.value)||0;
+  const nr=document.getElementById('no-record')?.checked||false;
+  const res=calcPoints(sa,sb,c.teamA,c.teamB,nr);
+  const allPlayers=[...c.teamA,...c.teamB].filter(p=>p);
+  roundNum++;
+  // Update stats
+  if(!nr){
+    c.teamA.filter(p=>p).forEach(p=>{
+      const st=PLAYER_STATS[p.id];
+      st.matchCount++;
+      if(res.aWins)st.wins++;else if(res.bWins)st.losses++;
+      st.points+=res.teamADelta;
+    });
+    c.teamB.filter(p=>p).forEach(p=>{
+      const st=PLAYER_STATS[p.id];
+      st.matchCount++;
+      if(res.bWins)st.wins++;else if(res.aWins)st.losses++;
+      st.points+=res.teamBDelta;
+    });
+  }
+  // Log
+  MATCH_LOG.push({
+    id:'m_'+Date.now(),courtName:c.name,round:roundNum,
+    ts:new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'}),
+    teamA:c.teamA.filter(p=>p).map(p=>({id:p.id,name:p.name,level:p.level})),
+    teamB:c.teamB.filter(p=>p).map(p=>({id:p.id,name:p.name,level:p.level})),
+    scoreA:sa,scoreB:sb,
+    handicap:res.handicap||0,
+    noRecord:nr,
+    ptA:res.teamADelta,ptB:res.teamBDelta,
+    aWins:res.aWins,bWins:res.bWins
+  });
+  // Sync to parent window
+  syncToParent();
+  // Move players to bench, promote queue
+  moveDonePlayers(ci);
+  closeModal();
+  const resultStr=nr?'（不計分）':res.aWins?\`A隊 \${sa}:\${sb} 勝！+\${res.teamADelta}pts\`:res.bWins?\`B隊 \${sb}:\${sa} 勝！+\${res.teamBDelta}pts\`:'平手';
+  toast(\`\${c.name} \${resultStr}\`,'ok');
+  render();
+}
+
+function courtDoneQuick(ci){
+  // Done without score entry — history only, no stats
+  const c=COURTS[ci];
+  const allPlayers=[...c.teamA,...c.teamB].filter(p=>p);
+  if(!allPlayers.length){toast('此面尚無球員','w');return;}
+  roundNum++;
+  MATCH_LOG.push({
+    id:'m_'+Date.now(),courtName:c.name,round:roundNum,
+    ts:new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'}),
+    teamA:c.teamA.filter(p=>p).map(p=>({id:p.id,name:p.name,level:p.level})),
+    teamB:c.teamB.filter(p=>p).map(p=>({id:p.id,name:p.name,level:p.level})),
+    scoreA:null,scoreB:null,noRecord:true,ptA:0,ptB:0
+  });
+  moveDonePlayers(ci);
+  toast(\`\${c.name} 打完（不計分）\`,'ok');
+  render();
+}
+
+function moveDonePlayers(ci){
+  const c=COURTS[ci];
+  const allPlayers=[...c.teamA,...c.teamB].filter(p=>p);
+  allPlayers.forEach(p=>{
+    const fp=findPlayerAllState(p.id);
+    if(fp){fp.played=(fp.played||0)+1;fp.resting=1;}
+    if(!BENCH.find(b=>b.id===p.id))BENCH.push({...p,played:(p.played||0)+1,resting:1});
+  });
+  c.teamA=[null,null];c.teamB=[null,null];
+  // Promote next queue group
+  if(QUEUE.length>0){
+    const next=QUEUE.shift();
+    next.group.slice(0,2).forEach((p,i)=>c.teamA[i]=p);
+    next.group.slice(2,4).forEach((p,i)=>c.teamB[i]=p);
+    // Tick down bench resting
+    BENCH.forEach(p=>{if(p.resting>0)p.resting--;});
+    const ready=BENCH.filter(p=>p.resting<=0);
+    ready.forEach(p=>UNASSIGNED.push(p));
+    BENCH=BENCH.filter(p=>p.resting>0);
+  }
+}
+
+function syncToParent(){
+  const results=ALL_PLAYERS.map(p=>{
+    const st=PLAYER_STATS[p.id];
+    return{lineUserId:p.lineUserId,wins:st.wins,losses:st.losses,points:st.points,matchCount:st.matchCount};
+  }).filter(r=>r.lineUserId);
+  try{window.opener&&window.opener.postMessage({type:'bonny_match_result',results,sessionId:SESSION.id},'*');}catch(e){}
+}
+
+/* ═══════════════ LEADERBOARD ═══════════════ */
+function showLeaderboard(){
+  const players=FILTERED_PLAYERS.map(p=>({...p,...PLAYER_STATS[p.id]}));
+  players.sort((a,b)=>(b.points||0)-(a.points||0));
+  const rows=players.map((p,i)=>{
+    const wr=p.matchCount>0?Math.round(p.wins/p.matchCount*100):'—';
+    const wrNum=p.matchCount>0?p.wins/p.matchCount:0;
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+    return\`<tr>
+      <td>\${medal}\${i+1}</td>
+      <td><strong>\${p.name}</strong><br><span style="font-size:.71rem;color:var(--text2)">\${LEVEL_LABELS[p.level]||'—'}</span></td>
+      <td style="font-family:'Space Mono',monospace;font-weight:800;color:var(--primary)">\${p.points||0}</td>
+      <td>
+        <div>\${typeof wr==='number'?wr+'%':'—'}</div>
+        <div class="wr-bar"><div class="wr-fill" style="width:\${typeof wrNum==='number'?Math.round(wrNum*100):0}%"></div></div>
+      </td>
+      <td style="font-size:.8rem">\${p.wins||0}勝 \${p.losses||0}負</td>
+      <td style="font-size:.8rem;color:var(--text2)">\${p.matchCount||0}</td>
+    </tr>\`;
+  }).join('');
+  openModal(\`<div class="mo-title">🏆 積分排行榜</div>
+    <div class="tabs">
+      <button class="tab act" onclick="switchLbTab('pts',this)">積分榜</button>
+      <button class="tab" onclick="switchLbTab('wr',this)">勝率榜</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="pts-table" id="lb-table">
+      <thead><tr><th>#</th><th>球員</th><th>積分</th><th>勝率</th><th>戰績</th><th>場數</th></tr></thead>
+      <tbody>\${rows}</tbody>
+    </table></div>
+    <div class="mo-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">關閉</button>
+    </div>\`,'lg');
+}
+
+function switchLbTab(type,btn){
+  document.querySelectorAll('#mo-box .tab').forEach(t=>t.classList.remove('act'));
+  btn.classList.add('act');
+  const players=FILTERED_PLAYERS.map(p=>({...p,...PLAYER_STATS[p.id]}));
+  if(type==='wr'){
+    players.sort((a,b)=>{
+      const wrA=a.matchCount>0?a.wins/a.matchCount:0;
+      const wrB=b.matchCount>0?b.wins/b.matchCount:0;
+      return wrB-wrA;
+    });
+  }else{
+    players.sort((a,b)=>(b.points||0)-(a.points||0));
+  }
+  const tbody=document.querySelector('#lb-table tbody');
+  if(!tbody)return;
+  tbody.innerHTML=players.map((p,i)=>{
+    const wr=p.matchCount>0?Math.round(p.wins/p.matchCount*100):'—';
+    const wrNum=p.matchCount>0?p.wins/p.matchCount:0;
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+    return\`<tr>
+      <td>\${medal}\${i+1}</td>
+      <td><strong>\${p.name}</strong><br><span style="font-size:.71rem;color:var(--text2)">\${LEVEL_LABELS[p.level]||'—'}</span></td>
+      <td style="font-family:'Space Mono',monospace;font-weight:800;color:var(--primary)">\${p.points||0}</td>
+      <td>
+        <div>\${typeof wr==='number'?wr+'%':'—'}</div>
+        <div class="wr-bar"><div class="wr-fill" style="width:\${typeof wrNum==='number'?Math.round(wrNum*100):0}%"></div></div>
+      </td>
+      <td style="font-size:.8rem">\${p.wins||0}勝 \${p.losses||0}負</td>
+      <td style="font-size:.8rem;color:var(--text2)">\${p.matchCount||0}</td>
+    </tr>\`;
+  }).join('');
+}
+
+/* ═══════════════ MATCH LOG ═══════════════ */
+function showMatchLog(){
+  if(!MATCH_LOG.length){toast('尚無比賽記錄','w');return;}
+  const entries=MATCH_LOG.slice().reverse().map(m=>{
+    const namesA=m.teamA.map(p=>p.name).join('、');
+    const namesB=m.teamB.map(p=>p.name).join('、');
+    const scoreStr=m.scoreA!=null?\`${m.scoreA}：${m.scoreB}\`:'—';
+    const resultTag=m.noRecord?'<span class="ml-no-record">不計分</span>':
+      m.aWins?'<span class="ml-result-win">🔵A勝</span>':'<span class="ml-result-lose">🔴B勝</span>';
+    const ptsA=m.noRecord?'—':'+'+m.ptA+'pts';
+    const ptsB=m.noRecord?'—':'+'+m.ptB+'pts';
+    const handi=m.handicap!=null&&m.handicap!==0?\`讓分\${Math.abs(m.handicap)}（\${m.handicap>0?'A讓':'B讓'}）\`:'等級相當';
+    return\`<div class="match-log-entry">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:.72rem;color:var(--text3);font-family:'Space Mono',monospace">\${m.ts} · \${m.courtName} · 第\${m.round}場</span>
+        \${resultTag}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center">
+        <div style="color:#1a5a8e"><strong>🔵 \${namesA}</strong><div style="font-size:.7rem;color:var(--text2)">\${ptsA}</div></div>
+        <div style="text-align:center;font-weight:900;font-size:.95rem">\${scoreStr}</div>
+        <div style="text-align:right;color:#8e1a1a"><strong>\${namesB} 🔴</strong><div style="font-size:.7rem;color:var(--text2)">\${ptsB}</div></div>
+      </div>
+      <div style="font-size:.69rem;color:var(--text3);margin-top:3px">\${handi}</div>
+    </div>\`;
+  }).join('');
+  openModal(\`<div class="mo-title">📊 比賽記錄（共 \${MATCH_LOG.length} 場）</div>
+    <div style="max-height:56vh;overflow-y:auto">\${entries}</div>
+    <div class="mo-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">關閉</button>
+    </div>\`,'lg');
+}
+
+/* ═══════════════ DRAG & DROP ═══════════════ */
+function onDragStart(e,src){
+  dragSrc=src;
+  e.dataTransfer.effectAllowed='move';
+}
+function onDragOver(e){e.preventDefault();e.currentTarget.classList.add('drag-over');}
+function onDragLeave(e){e.currentTarget.classList.remove('drag-over');}
+
+function extractPlayer(src){
+  let player=null;
+  if(src.type==='bench'){player={...BENCH[src.idx]};BENCH.splice(src.idx,1);}
+  else if(src.type==='unassigned'){player={...UNASSIGNED[src.idx]};UNASSIGNED.splice(src.idx,1);}
+  else if(src.type==='court'){
+    const c=COURTS[src.courtIdx];
+    const arr=src.team==='a'?c.teamA:c.teamB;
+    player=arr[src.posIdx]?{...arr[src.posIdx]}:null;
+    if(player)arr[src.posIdx]=null;
+  }else if(src.type==='queue'){
+    const q=QUEUE[src.queueIdx];
+    const pi=q.group.findIndex(p=>p.id===src.playerId);
+    if(pi>=0){player={...q.group[pi]};q.group.splice(pi,1);}
+    if(!q.group.length)QUEUE.splice(src.queueIdx,1);
+  }
+  return player;
+}
+
+function onDrop(e,tgt){
+  e.preventDefault();e.currentTarget.classList.remove('drag-over');
+  if(!dragSrc)return;
+  const player=extractPlayer(dragSrc);
+  dragSrc=null;
+  if(!player){render();return;}
+  const c=COURTS[tgt.courtIdx];
+  const arr=tgt.team==='a'?c.teamA:c.teamB;
+  const prev=arr[tgt.posIdx];
+  arr[tgt.posIdx]=player;
+  if(prev)UNASSIGNED.push(prev);
+  render();
+}
+
+function onDropQueue(e,qi){
+  e.preventDefault();e.currentTarget.classList.remove('drag-over');
+  if(!dragSrc)return;
+  const player=extractPlayer(dragSrc);
+  dragSrc=null;
+  if(!player){render();return;}
+  const q=QUEUE[qi];
+  if(q&&q.group.length<4){q.group.push(player);}
+  else{QUEUE.push({id:'q_'+Date.now(),group:[player]});}
+  render();
+}
+
+/* ═══════════════ COURT ACTIONS ═══════════════ */
+function removeFromCourt(ci,team,pi){
+  const c=COURTS[ci];
+  const arr=team==='a'?c.teamA:c.teamB;
+  const p=arr[pi];if(!p)return;
+  arr[pi]=null;UNASSIGNED.push(p);render();
+}
+
+function clearCourt(ci){
+  const c=COURTS[ci];
+  [...c.teamA,...c.teamB].filter(p=>p).forEach(p=>UNASSIGNED.push(p));
+  c.teamA=[null,null];c.teamB=[null,null];render();
+}
+
+function swapTeams(ci){
+  const c=COURTS[ci];
+  [c.teamA,c.teamB]=[c.teamB,c.teamA];render();
+}
+
+/* ═══════════════ QUEUE ACTIONS ═══════════════ */
+function promoteQueue(qi){
+  const target=COURTS.find(c=>c.teamA.some(p=>!p)||c.teamB.some(p=>!p));
+  if(!target){toast('所有球場已滿','w');return;}
+  const group=QUEUE[qi].group;
+  let aIdx=0,bIdx=0;
+  group.forEach((p,i)=>{
+    if(i<2){if(target.teamA[aIdx]===null)target.teamA[aIdx++]=p;else UNASSIGNED.push(p);}
+    else{if(target.teamB[bIdx]===null)target.teamB[bIdx++]=p;else UNASSIGNED.push(p);}
+  });
+  QUEUE.splice(qi,1);render();
+  toast('排隊 #'+(qi+1)+' 已推上 '+target.name,'ok');
+}
+
+function removeQueue(qi){
+  QUEUE[qi].group.forEach(p=>UNASSIGNED.push(p));
+  QUEUE.splice(qi,1);render();
+}
+
+/* ═══════════════ BENCH / UNASSIGNED ═══════════════ */
+function moveToQueue(idx,src){
+  let p=null;
+  if(src==='bench'){p=BENCH[idx];BENCH.splice(idx,1);}
+  else{p=UNASSIGNED[idx];UNASSIGNED.splice(idx,1);}
+  let q=QUEUE.find(q=>q.group.length<4);
+  if(!q){q={id:'q_'+Date.now(),group:[]};QUEUE.push(q);}
+  q.group.push(p);render();
+}
+
+function moveToBench(idx,src){
+  const p=UNASSIGNED[idx];UNASSIGNED.splice(idx,1);
+  BENCH.push({...p,resting:1});render();
+}
+
+function findPlayerAllState(id){
+  for(const arr of[BENCH,UNASSIGNED]){const f=arr.find(p=>p.id===id);if(f)return f;}
+  for(const c of COURTS){for(const arr of[c.teamA,c.teamB]){const f=arr.find(p=>p&&p.id===id);if(f)return f;}}
+  for(const q of QUEUE){const f=q.group.find(p=>p.id===id);if(f)return f;}
+  return null;
+}
+
+/* ═══════════════ AUTO ARRANGE ═══════════════ */
+function autoArrange(){
+  const available=[
+    ...UNASSIGNED,
+    ...BENCH.filter(p=>p.resting<=0)
+  ];
+  BENCH=BENCH.filter(p=>p.resting>0);
+  UNASSIGNED=[];
+  if(!available.length){toast('無可用球員','w');return;}
+  // Sort by played ASC, then level DESC
+  available.sort((a,b)=>{
+    const pd=(a.played||0)-(b.played||0);
+    return pd!==0?pd:(b.level||0)-(a.level||0);
+  });
+  // Apply bindings
+  const processed=new Set();
+  const groups=[];
+  available.forEach(p=>{
+    if(processed.has(p.id))return;
+    const bind=BINDINGS.find(b=>b.p1Id===p.id||b.p2Id===p.id);
+    if(bind){
+      const pid=bind.p1Id===p.id?bind.p2Id:bind.p1Id;
+      const partner=available.find(x=>x.id===pid&&!processed.has(x.id));
+      if(partner){processed.add(p.id);processed.add(partner.id);groups.push([p,partner]);return;}
+    }
+    processed.add(p.id);
+    groups.push([p]);
+  });
+  // Form balanced 4-player games: pair two groups of 2 with similar total level
+  // Flatten and form teams of 2
+  let pool=groups.flat();
+  const batches=[];
+  while(pool.length>=4){
+    const batch=pool.splice(0,4);
+    // Sort by level desc, pair [0,3] as team A, [1,2] as team B for balance
+    batch.sort((a,b)=>(b.level||0)-(a.level||0));
+    batches.push({teamA:[batch[0],batch[3]],teamB:[batch[1],batch[2]]});
+  }
+  // Fill courts
+  batches.forEach(b=>{
+    const court=COURTS.find(c=>!c.teamA.some(p=>p)&&!c.teamB.some(p=>p));
+    if(court){court.teamA=[...b.teamA];court.teamB=[...b.teamB];}
+    else{
+      // Push as queue entry
+      QUEUE.push({id:'q_'+Date.now(),group:[...b.teamA,...b.teamB]});
+    }
+  });
+  // Remaining → unassigned
+  pool.forEach(p=>UNASSIGNED.push(p));
+  toast('自動排場完成','ok');render();
+}
+
+/* ═══════════════ SLOT FILTER ═══════════════ */
+function showSlotFilter(){
+  if(!SESSION)return;
+  const slots=[{id:'all',name:'全部時段'},...(SESSION.slots||[])];
+  openModal(\`<div class="mo-title">⏱ 時段篩選</div>
+    \${slots.map(s=>\`<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;margin-bottom:5px;background:\${currentSlotFilter===s.id?'var(--primary-l)':'var(--bg2)'};border:1.5px solid \${currentSlotFilter===s.id?'var(--primary)':'var(--border)'}">
+      <input type="radio" name="slotf" value="\${s.id}" \${currentSlotFilter===s.id?'checked':''} style="accent-color:var(--primary)">
+      <span style="font-size:.84rem;font-weight:600">\${s.name}\${s.startTime?' ('+s.startTime+'–'+s.endTime+')':''}</span>
+    </label>\`).join('')}
+    <div class="mo-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn btn-p" onclick="applySlotFilter()">套用</button>
+    </div>\`);
+}
+
+function applySlotFilter(){
+  const sel=document.querySelector('input[name="slotf"]:checked');
+  if(!sel)return;
+  currentSlotFilter=sel.value;
+  FILTERED_PLAYERS=currentSlotFilter==='all'?[...ALL_PLAYERS]:ALL_PLAYERS.filter(p=>p.slotId===currentSlotFilter);
+  UNASSIGNED=[...FILTERED_PLAYERS];
+  COURTS.forEach(c=>{c.teamA=[null,null];c.teamB=[null,null];});
+  QUEUE=[];BENCH=[];
+  closeModal();render();toast('已套用時段篩選','ok');
+}
+
+/* ═══════════════ BINDINGS ═══════════════ */
+function showBindings(){
+  const players=FILTERED_PLAYERS;
+  openModal(\`<div class="mo-title">🔗 人員綁定設定</div>
+    <div id="bind-list" style="margin-bottom:12px">
+      \${BINDINGS.length?BINDINGS.map((b,i)=>{
+        const p1=players.find(p=>p.id===b.p1Id),p2=players.find(p=>p.id===b.p2Id);
+        return\`<div class="bind-row"><span>\${p1?p1.name:'?'} ⟷ \${p2?p2.name:'?'}\${b.label?' ('+b.label+')':''}</span><button class="btn btn-sm btn-d" onclick="removeBinding(\${i})">移除</button></div>\`;
+      }).join(''):'<div class="empty-state" style="padding:8px;font-size:.78rem">尚無綁定</div>'}
+    </div>
+    <div class="divider"></div>
+    <div class="fg"><label class="fl">球員 A</label><select id="bind-p1" class="fc">\${players.map(p=>\`<option value="\${p.id}">\${p.name} (\${p.level}級)</option>\`).join('')}</select></div>
+    <div class="fg"><label class="fl">球員 B</label><select id="bind-p2" class="fc">\${players.map(p=>\`<option value="\${p.id}">\${p.name} (\${p.level}級)</option>\`).join('')}</select></div>
+    <div class="fg"><label class="fl">說明（選填）</label><input id="bind-label" class="fc" placeholder="例：父子、固定搭檔"></div>
+    <div class="mo-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">關閉</button>
+      <button class="btn btn-p" onclick="addBinding()">新增綁定</button>
+    </div>\`);
+}
+
+function addBinding(){
+  const p1=document.getElementById('bind-p1').value;
+  const p2=document.getElementById('bind-p2').value;
+  if(p1===p2){toast('請選擇不同球員','w');return;}
+  if(BINDINGS.find(b=>(b.p1Id===p1&&b.p2Id===p2)||(b.p1Id===p2&&b.p2Id===p1))){toast('此組合已存在','w');return;}
+  BINDINGS.push({p1Id:p1,p2Id:p2,label:document.getElementById('bind-label').value.trim()});
+  toast('綁定已新增','ok');showBindings();
+}
+
+function removeBinding(i){BINDINGS.splice(i,1);showBindings();}
+
+/* ═══════════════ ADD TO BENCH ═══════════════ */
+function showAddBench(){
+  const items=FILTERED_PLAYERS.map(p=>{
+    const inGame=COURTS.some(c=>[...c.teamA,...c.teamB].some(cp=>cp&&cp.id===p.id));
+    const inQ=QUEUE.some(q=>q.group.some(qp=>qp.id===p.id));
+    const inU=UNASSIGNED.some(u=>u.id===p.id);
+    const inB=BENCH.find(b=>b.id===p.id);
+    const loc=inGame?'場上':inQ?'排隊':inU?'未分配':inB?'休息中':'';
+    return\`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px">
+      <div><strong style="font-size:.84rem">\${p.name}</strong> <span style="font-size:.74rem;color:var(--text2)">\${LEVEL_LABELS[p.level]||'—'}\${loc?' · '+loc:''}</span></div>
+      <button class="btn btn-sm btn-w" onclick="forceAddBench('\${p.id}')">候場</button>
+    </div>\`;
+  }).join('');
+  openModal(\`<div class="mo-title">+ 手動加入候場</div>\${items}<div class="mo-footer"><button class="btn btn-ghost" onclick="closeModal()">關閉</button></div>\`);
+}
+
+function forceAddBench(pid){
+  const p=FILTERED_PLAYERS.find(x=>x.id===pid);if(!p)return;
+  COURTS.forEach(c=>{
+    [c.teamA,c.teamB].forEach(arr=>{const i=arr.findIndex(x=>x&&x.id===pid);if(i>=0)arr[i]=null;});
+  });
+  QUEUE.forEach(q=>{const i=q.group.findIndex(x=>x.id===pid);if(i>=0)q.group.splice(i,1);});
+  QUEUE=QUEUE.filter(q=>q.group.length);
+  const ui=UNASSIGNED.findIndex(x=>x.id===pid);if(ui>=0)UNASSIGNED.splice(ui,1);
+  if(!BENCH.find(b=>b.id===pid))BENCH.push({...p,resting:1});
+  closeModal();render();toast(p.name+' 已移至候場','ok');
+}
+
+/* ═══════════════ MODAL ═══════════════ */
+function openModal(html,size){
+  const box=document.getElementById('mo-box');
+  box.className='mo-box'+(size==='lg'?' mo-box-lg':'');
+  box.innerHTML=html;
+  document.getElementById('mo-overlay').style.display='flex';
+}
+function closeModal(){document.getElementById('mo-overlay').style.display='none';}
+
+/* ═══════════════ TOAST ═══════════════ */
+function toast(msg,type='i'){
+  const wrap=document.getElementById('toast-wrap');
+  const el=document.createElement('div');
+  el.className='toast-msg t-'+(type==='ok'?'ok':type==='w'?'w':'i');
+  el.textContent=msg;wrap.appendChild(el);
+  setTimeout(()=>el.remove(),2800);
+}
+<\/script>
+</body>
+</html>`;
+}
 </script>
+
 <!-- COMBO SLOT WARNING MODAL -->
 <div id="mo-combo-warn" class="mo">
   <div class="modal modal-sm">
