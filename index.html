@@ -1648,9 +1648,6 @@ function renderProfileStats(){
   // Try to load ranking if not yet done, so rank positions can show
   if(!rankCache||!rankCache.length){loadRanking().then(()=>renderProfileStats());}
 }
-  statsBody.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px">
-
 async function saveProfile(){
   const nickname=(fd('pf-nickname').value||'').trim();
   if(!nickname){toast('請填寫稱呼','err');return;}
