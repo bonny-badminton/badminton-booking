@@ -2860,14 +2860,23 @@ async function renderRoster(sid,mode,area){
         const isCombo=sl.combinedWith&&sl.combinedWith.length;
         if(!isCombo){
           const cap=sl.quota===9999?(s.courts||1)*8:sl.quota;
-          // 正取人數：直接報此時段 + C時段中此子時段為confirmed
-          const slConfirmed=active.filter(r=>{
+          // 直接報此時段的正取人數
+          const directConfirmed=active.filter(r=>{
             if(r.primarySlotId===mode&&!r.isComboReg)return r.status==='confirmed';
             if(r.isComboReg&&r.comboChildStatuses)return r.comboChildStatuses[mode]==='confirmed';
             return false;
           }).length;
-          const over=slConfirmed>cap;
-          quotaHtml=`${sl.name} 設定名額 <strong>${cap}</strong> 名 · 已報 <strong style="color:${over?'var(--danger)':'var(--text)'}">${slConfirmed}</strong>${over?` <span style="color:var(--danger)">(超收${slConfirmed-cap})</span>`:''}`;
+          // C時段(合併時段)中包含此時段的報名人數
+          const comboSlots=s.slots.filter(cs=>cs.combinedWith&&cs.combinedWith.includes(mode));
+          const comboCount=active.filter(r=>{
+            const rSlot=s.slots.find(x=>x.id===r.primarySlotId);
+            return rSlot&&rSlot.combinedWith&&rSlot.combinedWith.includes(mode)&&r.status==='confirmed';
+          }).length;
+          const over=directConfirmed>cap;
+          const comboLabel=comboSlots.length&&comboCount>0
+            ?` <span style="font-size:.78rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#E8F5E9;border:1px solid #C8E6C9;color:#2E7D32">C段 ${comboCount}</span>`
+            :'';
+          quotaHtml=`${sl.name} 設定名額 <strong>${cap}</strong> 名 · 已報 <strong style="color:${over?'var(--danger)':'var(--text)'}">${directConfirmed}</strong>${comboLabel}${over?` <span style="color:var(--danger)">(超收${directConfirmed-cap})</span>`:''}`;
         }else{
           // C 時段：顯示各子時段
           quotaHtml=sl.combinedWith.map(cid=>{
@@ -4332,7 +4341,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&CS.sid)csS
 
 const HANDICAP_PER_LEVEL=2;
 const CS_LEVEL_LABELS={};for(let i=0;i<=18;i++)CS_LEVEL_LABELS[i]=i===0?'—':i+'級';
-function csTeamSum(team){return team.reduce((s,p)=>s+(p?p.level||0:0),0);}
+function csTeamSum(team){return team.reduce((s,p)=>s+(p?parseInt(p.level)||0:0),0);}
 function csHandicap(tA,tB){return(csTeamSum(tA)-csTeamSum(tB))*HANDICAP_PER_LEVEL;}
 function csCalcPoints(sA,sB,tA,tB,noRecord){
   if(noRecord)return{pA:0,pB:0};
@@ -4408,15 +4417,48 @@ function csRenderMain(){
       <span style="font-weight:800;font-size:.86rem">排隊等候區</span>
       <span style="font-size:.73rem;font-weight:700;background:rgba(255,255,255,.25);padding:2px 9px;border-radius:999px">${CS.queue.length} 組</span>
     </div>
-    <div>${CS.queue.length?CS.queue.map((q,qi)=>{
-      const chips=q.group.map((p,gi)=>`<span draggable="true" ondragstart="csOnDragStart(event,{type:'queue',qi:${qi},pid:'${p.id}'})" style="display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:7px;${gi<2?'background:#EAF4FF;border:1px solid #BBDAFF;color:#1a5a8e':'background:#FFF0F0;border:1px solid #FFBBBB;color:#8e1a1a'};font-size:.75rem;cursor:grab">${p.name} <span style="font-size:.62rem">${p.level}級</span></span>`).join('');
-      const empty=[...Array(Math.max(0,4-q.group.length))].map(()=>'<span style="padding:3px 7px;border-radius:7px;background:var(--bg3);border:1px dashed var(--border);color:var(--text3);font-size:.7rem">空</span>').join('');
-      return`<div style="border-bottom:1px solid var(--bg2);padding:8px 12px;display:flex;align-items:center;gap:7px" ondragover="csOnDragOver(event)" ondragleave="csOnDragLeave(event)" ondrop="csOnDropQueue(event,${qi})">
-        <span style="font-family:'Space Mono',monospace;font-size:.78rem;font-weight:700;color:var(--primary);min-width:20px">#${qi+1}</span>
-        <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1">${chips}${empty}</div>
-        <div style="display:flex;gap:3px"><button class="btn btn-ok btn-sm" onclick="csPromoteQueue(${qi})">↑上場</button><button class="btn btn-d btn-sm" onclick="csRemoveQueue(${qi})">✕</button></div>
+    <div id="cs-queue-body">${CS.queue.length?CS.queue.map((q,qi)=>{
+      // 4 explicit slot positions: A前(0) A後(1) B前(2) B後(3)
+      const slots=[0,1,2,3].map(si=>{
+        const p=q.group[si];
+        const isA=si<2;
+        const tc=isA?'#1a5a8e':'#8e1a1a';
+        const tb=isA?'#EAF4FF':'#FFF0F0';
+        const tbd=isA?'#BBDAFF':'#FFBBBB';
+        const label=(isA?'A':'B')+(si%2===0?'前':'後');
+        if(p){
+          return`<div draggable="true" ondragstart="csOnDragStart(event,{type:'qslot',qi:${qi},si:${si},pid:'${p.id}'})" ondragover="csOnDragOver(event)" ondragleave="csOnDragLeave(event)" ondrop="csOnDropQueueSlot(event,${qi},${si})" style="border:2px solid ${tbd};background:${tb};border-radius:9px;padding:5px 7px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:grab;position:relative">
+            <div style="font-size:.59rem;font-weight:700;color:#aaa;letter-spacing:.3px">${label}</div>
+            <div style="font-size:.78rem;font-weight:800;color:${tc};max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+            <div style="font-size:.62rem;padding:1px 5px;border-radius:999px;background:${tb};border:1px solid ${tbd};color:${tc};font-weight:700;margin-top:1px">${CS_LEVEL_LABELS[parseInt(p.level)]||'—'}</div>
+            <button onclick="csRemoveFromQueue(${qi},${si})" style="position:absolute;top:2px;right:3px;background:none;border:none;cursor:pointer;font-size:.63rem;color:#ccc;padding:0;line-height:1">✕</button>
+          </div>`;
+        }else{
+          return`<div ondragover="csOnDragOver(event)" ondragleave="csOnDragLeave(event)" ondrop="csOnDropQueueSlot(event,${qi},${si})" style="border:2px dashed ${tbd};border-radius:9px;padding:5px 7px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg)">
+            <div style="font-size:.59rem;color:#ccc;letter-spacing:.3px">${label}</div>
+            <div style="font-size:.7rem;color:#ccc;margin-top:1px">空位</div>
+          </div>`;
+        }
+      });
+      const filledCount=q.group.filter(p=>p).length;
+      return`<div style="border-bottom:1px solid var(--bg2);padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <span style="font-family:'Space Mono',monospace;font-size:.8rem;font-weight:700;color:var(--primary);min-width:22px">#${qi+1}</span>
+          <div style="display:flex;gap:3px;margin-left:auto">
+            ${qi>0?`<button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 7px" onclick="csMoveQueueUp(${qi})" title="向上移">↑</button>`:''}
+            ${qi<CS.queue.length-1?`<button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 7px" onclick="csMoveQueueDown(${qi})" title="向下移">↓</button>`:''}
+            <button class="btn btn-ok btn-sm" style="font-size:.65rem;padding:2px 8px" onclick="csPromoteQueue(${qi})" title="推上場">↑上場</button>
+            <button class="btn btn-d btn-sm" style="font-size:.65rem;padding:2px 7px" onclick="csRemoveQueue(${qi})">✕</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px">
+          ${slots.join('')}
+        </div>
       </div>`;
     }).join(''):'<div style="padding:18px;text-align:center;color:var(--text3);font-size:.78rem">目前無排隊人員</div>'}
+    </div>
+    <div style="padding:8px 12px;border-top:1px solid var(--bg2);display:flex;justify-content:flex-end">
+      <button class="btn btn-s btn-sm" onclick="csAddEmptyQueue()">+ 新增空組</button>
     </div>
   </div>`;
   main.innerHTML=html;
@@ -4452,11 +4494,45 @@ function csExtract(src){
   if(src.type==='bench'){if(CS.bench[src.idx]){p={...CS.bench[src.idx]};CS.bench.splice(src.idx,1);}}
   else if(src.type==='unassigned'){if(CS.unassigned[src.idx]){p={...CS.unassigned[src.idx]};CS.unassigned.splice(src.idx,1);}}
   else if(src.type==='court'){const c=CS.courts[src.ci];const arr=src.team==='a'?c.teamA:c.teamB;p=arr[src.pi]?{...arr[src.pi]}:null;if(p)arr[src.pi]=null;}
-  else if(src.type==='queue'){const q=CS.queue[src.qi];if(q){const pi=q.group.findIndex(x=>x.id===src.pid);if(pi>=0){p={...q.group[pi]};q.group.splice(pi,1);}if(!q.group.length)CS.queue.splice(src.qi,1);}}
+  else if(src.type==='queue'||src.type==='qslot'){
+    const q=CS.queue[src.qi];
+    if(q){
+      const si=src.si!=null?src.si:q.group.findIndex(x=>x&&x.id===src.pid);
+      if(si>=0&&q.group[si]){p={...q.group[si]};q.group[si]=null;}
+      if(!q.group.some(x=>x))CS.queue.splice(src.qi,1);
+    }
+  }
   return p;
 }
 function csOnDrop(e,tgt){e.preventDefault();e.currentTarget.style.outline='';const p=csExtract(CS.dragSrc);CS.dragSrc=null;if(!p){csRender();return;}const c=CS.courts[tgt.ci];const arr=tgt.team==='a'?c.teamA:c.teamB;const prev=arr[tgt.pi];arr[tgt.pi]=p;if(prev)CS.unassigned.push(prev);csSave();csRender();}
-function csOnDropQueue(e,qi){e.preventDefault();e.currentTarget.style.outline='';const p=csExtract(CS.dragSrc);CS.dragSrc=null;if(!p){csRender();return;}const q=CS.queue[qi];if(q&&q.group.length<4)q.group.push(p);else CS.queue.push({id:'q_'+Date.now(),group:[p]});csSave();csRender();}
+function csOnDropQueue(e,qi){e.preventDefault();e.currentTarget.style.outline='';const p=csExtract(CS.dragSrc);CS.dragSrc=null;if(!p){csRender();return;}const q=CS.queue[qi];if(q&&q.group.filter(x=>x).length<4){// find first empty slot
+  let placed=false;for(let i=0;i<4;i++){if(!q.group[i]){q.group[i]=p;placed=true;break;}}if(!placed)q.group.push(p);}else{CS.queue.push({id:'q_'+Date.now(),group:[p,null,null,null]});}csSave();csRender();}
+
+function csOnDropQueueSlot(e,qi,si){
+  e.preventDefault();e.currentTarget.style.outline='';
+  const p=csExtract(CS.dragSrc);CS.dragSrc=null;
+  if(!p){csRender();return;}
+  if(!CS.queue[qi])CS.queue[qi]={id:'q_'+Date.now(),group:[null,null,null,null]};
+  const q=CS.queue[qi];
+  // Ensure group has 4 slots
+  while(q.group.length<4)q.group.push(null);
+  const prev=q.group[si];
+  q.group[si]=p;
+  if(prev)CS.unassigned.push(prev);
+  csSave();csRender();
+}
+function csRemoveFromQueue(qi,si){
+  const q=CS.queue[qi];if(!q)return;
+  const p=q.group[si];if(!p)return;
+  q.group[si]=null;
+  CS.unassigned.push(p);
+  // Remove group if all empty
+  if(!q.group.some(x=>x))CS.queue.splice(qi,1);
+  csSave();csRender();
+}
+function csMoveQueueUp(qi){if(qi<=0)return;[CS.queue[qi-1],CS.queue[qi]]=[CS.queue[qi],CS.queue[qi-1]];csSave();csRender();}
+function csMoveQueueDown(qi){if(qi>=CS.queue.length-1)return;[CS.queue[qi],CS.queue[qi+1]]=[CS.queue[qi+1],CS.queue[qi]];csSave();csRender();}
+function csAddEmptyQueue(){CS.queue.push({id:'q_'+Date.now(),group:[null,null,null,null]});csSave();csRender();}
 
 function csRemoveFromCourt(ci,team,pi){const arr=team==='a'?CS.courts[ci].teamA:CS.courts[ci].teamB;const p=arr[pi];if(!p)return;arr[pi]=null;CS.unassigned.push(p);csSave();csRender();}
 function csClearCourt(ci){const c=CS.courts[ci];[...c.teamA,...c.teamB].filter(p=>p).forEach(p=>CS.unassigned.push(p));c.teamA=[null,null];c.teamB=[null,null];csSave();csRender();}
@@ -4465,10 +4541,24 @@ function csSwapTeams(ci){const c=CS.courts[ci];[c.teamA,c.teamB]=[c.teamB,c.team
 function csFind(id){for(const arr of[CS.bench,CS.unassigned]){const f=arr.find(p=>p.id===id);if(f)return f;}for(const c of CS.courts)for(const arr of[c.teamA,c.teamB]){const f=(arr||[]).find(p=>p&&p.id===id);if(f)return f;}for(const q of CS.queue){const f=q.group.find(p=>p.id===id);if(f)return f;}return null;}
 function csMoveDonePlayers(ci){
   const c=CS.courts[ci];const all=[...c.teamA,...c.teamB].filter(p=>p);
-  all.forEach(p=>{const ref=csFind(p.id);if(ref){ref.played=(ref.played||0)+1;ref.resting=1;}if(!CS.bench.find(b=>b.id===p.id))CS.bench.push({...p,played:(p.played||0)+1,resting:1});});
+  // Move court players to bench (resting=1)
+  all.forEach(p=>{
+    const ref=csFind(p.id);if(ref){ref.played=(ref.played||0)+1;}
+    if(!CS.bench.find(b=>b.id===p.id))CS.bench.push({...p,played:(p.played||0)+1,resting:1});
+  });
   c.teamA=[null,null];c.teamB=[null,null];
-  if(CS.queue.length){const next=CS.queue.shift();next.group.slice(0,2).forEach((p,i)=>c.teamA[i]=p);next.group.slice(2,4).forEach((p,i)=>c.teamB[i]=p);
-  CS.bench.forEach(p=>{if(p.resting>0)p.resting--;});const ready=CS.bench.filter(p=>p.resting<=0);ready.forEach(p=>CS.unassigned.push(p));CS.bench=CS.bench.filter(p=>p.resting>0);}
+  // Tick down all bench players (they waited one round)
+  CS.bench.forEach(p=>{if(p.resting>0)p.resting--;});
+  // Release ready bench players
+  const ready=CS.bench.filter(p=>p.resting<=0);
+  ready.forEach(p=>CS.unassigned.push(p));
+  CS.bench=CS.bench.filter(p=>p.resting>0);
+  // Promote next queue group onto cleared court
+  if(CS.queue.length){
+    const next=CS.queue.shift();
+    next.group.slice(0,2).forEach((p,i)=>c.teamA[i]=p);
+    next.group.slice(2,4).forEach((p,i)=>c.teamB[i]=p);
+  }
 }
 function csDoneQuick(ci){
   const c=CS.courts[ci];const all=[...c.teamA,...c.teamB].filter(p=>p);if(!all.length){toast('此面尚無球員','err');return;}
@@ -4536,22 +4626,52 @@ async function csSyncStats(){
 function csPromoteQueue(qi){
   const target=CS.courts.find(c=>c.teamA.some(p=>!p)||c.teamB.some(p=>!p));if(!target){toast('所有球場已滿','err');return;}
   const g=CS.queue[qi].group;let ai=0,bi=0;
-  g.forEach((p,i)=>{if(i<2){if(!target.teamA[ai])target.teamA[ai++]=p;else CS.unassigned.push(p);}else{if(!target.teamB[bi])target.teamB[bi++]=p;else CS.unassigned.push(p);}});
+  // slots 0,1 → teamA; slots 2,3 → teamB; skip nulls
+  g.forEach((p,si)=>{if(!p)return;if(si<2){while(ai<2&&target.teamA[ai])ai++;if(ai<2)target.teamA[ai++]=p;else CS.unassigned.push(p);}else{while(bi<2&&target.teamB[bi])bi++;if(bi<2)target.teamB[bi++]=p;else CS.unassigned.push(p);}});
   CS.queue.splice(qi,1);csSave();csRender();toast('排隊 #'+(qi+1)+' 已推上 '+target.name,'ok');
 }
-function csRemoveQueue(qi){CS.queue[qi].group.forEach(p=>CS.unassigned.push(p));CS.queue.splice(qi,1);csSave();csRender();}
 function csMoveToQueue(idx,src){let p=null;if(src==='bench'){p=CS.bench[idx];CS.bench.splice(idx,1);}else{p=CS.unassigned[idx];CS.unassigned.splice(idx,1);}let q=CS.queue.find(q=>q.group.length<4);if(!q){q={id:'q_'+Date.now(),group:[]};CS.queue.push(q);}q.group.push(p);csSave();csRender();}
 function csMoveToBench(idx){const p=CS.unassigned[idx];CS.unassigned.splice(idx,1);CS.bench.push({...p,resting:1});csSave();csRender();}
 
 function courtAutoArrange(){
-  const avail=[...CS.unassigned,...CS.bench.filter(p=>p.resting<=0)];CS.bench=CS.bench.filter(p=>p.resting>0);CS.unassigned=[];
-  if(!avail.length){toast('無可用球員','err');return;}
-  avail.sort((a,b)=>(a.played||0)-(b.played||0)||(b.level||0)-(a.level||0));
+  // Collect available: unassigned + bench ready (resting<=0)
+  let avail=[...CS.unassigned,...CS.bench.filter(p=>p.resting<=0)];
+  // If nothing available but bench has resting players (first round edge case), release them all
+  if(!avail.length&&CS.bench.length){
+    CS.bench.forEach(p=>p.resting=0);
+    avail=[...CS.bench];CS.bench=[];
+  }
+  CS.bench=CS.bench.filter(p=>p.resting>0);
+  CS.unassigned=[];
+  if(!avail.length){toast('目前無可排場人員','err');return;}
+  avail.sort((a,b)=>(a.played||0)-(b.played||0)||(parseInt(b.level)||0)-(parseInt(a.level)||0));
+  // Apply bindings
   const processed=new Set();const groups=[];
-  avail.forEach(p=>{if(processed.has(p.id))return;const bind=CS.bindings.find(b=>b.p1Id===p.id||b.p2Id===p.id);if(bind){const pid=bind.p1Id===p.id?bind.p2Id:bind.p1Id;const pt=avail.find(x=>x.id===pid&&!processed.has(x.id));if(pt){processed.add(p.id);processed.add(pt.id);groups.push([p,pt]);return;}}processed.add(p.id);groups.push([p]);});
+  avail.forEach(p=>{
+    if(processed.has(p.id))return;
+    const bind=CS.bindings.find(b=>b.p1Id===p.id||b.p2Id===p.id);
+    if(bind){const pid=bind.p1Id===p.id?bind.p2Id:bind.p1Id;const pt=avail.find(x=>x.id===pid&&!processed.has(x.id));if(pt){processed.add(p.id);processed.add(pt.id);groups.push([p,pt]);return;}}
+    processed.add(p.id);groups.push([p]);
+  });
   let pool=groups.flat();
-  while(pool.length>=4){const b=pool.splice(0,4).sort((a,c)=>(c.level||0)-(a.level||0));const tA=[b[0],b[3]],tB=[b[1],b[2]];const court=CS.courts.find(c=>!c.teamA.some(p=>p)&&!c.teamB.some(p=>p));if(court){court.teamA=tA;court.teamB=tB;}else CS.queue.push({id:'q_'+Date.now(),group:[...tA,...tB]});}
-  pool.forEach(p=>CS.unassigned.push(p));csSave();csRender();toast('自動排場完成','ok');
+  // Form groups of 4 balanced by level
+  const batches=[];
+  while(pool.length>=4){
+    const b=pool.splice(0,4).sort((a,c)=>(parseInt(c.level)||0)-(parseInt(a.level)||0));
+    // Pair high+low vs mid+mid for balance: [0,3] vs [1,2]
+    batches.push({tA:[b[0],b[3]],tB:[b[1],b[2]]});
+  }
+  // Place batches on empty courts first, then into queue
+  batches.forEach(({tA,tB})=>{
+    const court=CS.courts.find(c=>!c.teamA.some(p=>p)&&!c.teamB.some(p=>p));
+    if(court){court.teamA=tA;court.teamB=tB;}
+    else{CS.queue.push({id:'q_'+Date.now(),group:[...tA,...tB]});}
+  });
+  // Remaining (odd players) go back to unassigned
+  pool.forEach(p=>CS.unassigned.push(p));
+  csSave();csRender();
+  const msg=batches.length?`自動排場完成（${batches.length}組）`:'人數不足4人，無法自動組隊';
+  toast(msg,'ok');
 }
 
 function courtShowSlotFilter(){
