@@ -4318,6 +4318,14 @@ async function openCourtArrangement(sid,slotId='all'){
   const slotLabel=slot?(slot.name+(slot.startTime?' ('+slot.startTime+'–'+slot.endTime+')':'')):'';
   fd('court-subtitle').textContent=(s.name||s.date)+(slotLabel?' · '+slotLabel:'');
   const overlay=fd('court-overlay');overlay.style.display='flex';document.body.style.overflow='hidden';
+  // Mobile: show first tab (courts) by default
+  if(isMobile()){
+    CS_MOBILE_TAB='courts';
+    const mainEl=fd('court-main');if(mainEl)mainEl.style.display='block';
+    ['cs-mobile-queue','cs-mobile-bench','cs-mobile-unassigned'].forEach(id=>{const el=fd(id);if(el)el.style.display='none';});
+    document.querySelectorAll('.cs-tab').forEach(t=>t.classList.remove('act'));
+    const firstTab=fd('cs-tab-courts');if(firstTab)firstTab.classList.add('act');
+  }
   csRender();
 }
 
@@ -4344,16 +4352,87 @@ const CS_LEVEL_LABELS={};for(let i=0;i<=18;i++)CS_LEVEL_LABELS[i]=i===0?'—':i+
 function csTeamSum(team){return team.reduce((s,p)=>s+(p?parseInt(p.level)||0:0),0);}
 function csHandicap(tA,tB){return(csTeamSum(tA)-csTeamSum(tB))*HANDICAP_PER_LEVEL;}
 function csCalcPoints(sA,sB,tA,tB,noRecord){
-  if(noRecord)return{pA:0,pB:0};
-  const handi=csHandicap(tA,tB),diff=sA-sB,aWins=sA>sB,bWins=sB>sA,favA=csTeamSum(tA)>=csTeamSum(tB);
-  const B=10,P=2;let pA=P,pB=P;
-  if(aWins){if(favA){const m=diff-handi;pA=m>0?B+Math.round(m*.5):B;}else{pA=B+Math.round(Math.abs(handi)*1.2)+Math.round(diff*.3);pB=Math.max(0,P-Math.round(diff*.2));}}
-  else if(bWins){if(!favA){const m=(-diff)-Math.abs(handi);pB=m>0?B+Math.round(m*.5):B;}else{pB=B+Math.round(Math.abs(handi)*1.2)+Math.round((-diff)*.3);pA=Math.max(0,P-Math.round((-diff)*.2));}}
-  else{pA=Math.round(B*.6);pB=pA;}
+  if(noRecord)return{pA:0,pB:0,aWins:sA>sB,bWins:sB>sA,handi:csHandicap(tA,tB)};
+  const handi=csHandicap(tA,tB); // positive = A should win by this margin
+  const diff=sA-sB;              // positive = A is winning
+  const aWins=sA>sB, bWins=sB>sA;
+  const favA=csTeamSum(tA)>=csTeamSum(tB); // A is higher or equal level
+
+  // Base: lose=1, draw=1, win=3
+  let pA=1, pB=1;
+
+  if(aWins){
+    pA=3; pB=1;
+    if(favA){
+      // A is favoured — wins beyond handicap earns +1
+      if(diff>handi) pA=4;
+    }else{
+      // A is underdog — winning at all earns +2 bonus
+      pA=5; pB=1;
+    }
+  }else if(bWins){
+    pB=3; pA=1;
+    if(!favA){
+      // B is favoured — wins beyond handicap earns +1
+      if((-diff)>Math.abs(handi)) pB=4;
+    }else{
+      // B is underdog — winning at all earns +2 bonus
+      pB=5; pA=1;
+    }
+  }
+  // draw: both stay at 1
   return{pA,pB,aWins,bWins,handi};
 }
 
-function csRender(){csRenderMain();csRenderSidebar();}
+let CS_MOBILE_TAB='courts';
+function csSwitchTab(tab,btn){
+  CS_MOBILE_TAB=tab;
+  document.querySelectorAll('.cs-tab').forEach(t=>t.classList.remove('act'));
+  if(btn)btn.classList.add('act');
+  // Hide all mobile panels
+  ['cs-mobile-queue','cs-mobile-bench','cs-mobile-unassigned'].forEach(id=>{const el=fd(id);if(el)el.style.display='none';});
+  const main=fd('court-main');
+  if(tab==='courts'){if(main)main.style.display='block';}
+  else{if(main)main.style.display='none';const panel=fd('cs-mobile-'+tab);if(panel)panel.style.display='block';}
+  csRenderTab(tab);
+}
+function csRenderTab(tab){
+  if(tab==='courts')return; // already rendered in csRenderMain
+  if(tab==='queue'){const el=fd('cs-mobile-queue');if(el)el.innerHTML=csBuildQueueHtml();}
+  else if(tab==='bench'){const el=fd('cs-mobile-bench');if(el)el.innerHTML=csBuildBenchHtml();}
+  else if(tab==='unassigned'){const el=fd('cs-mobile-unassigned');if(el)el.innerHTML=csBuildUnassignedHtml();}
+}
+
+function csShowMobileMenu(){
+  csModal(`<div style="font-size:.95rem;font-weight:800;margin-bottom:14px">工具選單</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-s" style="justify-content:flex-start" onclick="csCloseModal();courtShowSlotFilter()">⏱ 切換時段</button>
+      <button class="btn btn-s" style="justify-content:flex-start" onclick="csCloseModal();courtShowBindings()">🔗 人員綁定</button>
+      <button class="btn btn-s" style="justify-content:flex-start" onclick="csCloseModal();courtShowMatchLog()">📊 比賽記錄</button>
+      <button class="btn btn-s" style="justify-content:flex-start" onclick="csCloseModal();courtShowLeaderboard()">🏆 積分榜</button>
+      <button class="btn btn-s" style="justify-content:flex-start" onclick="csCloseModal();courtShowAddBench()">+ 手動加入候場</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-ghost" onclick="csCloseModal()">關閉</button></div>`);
+}
+
+function isMobile(){return window.innerWidth<=640;}
+
+function csRender(){
+  csRenderMain();
+  if(isMobile()){
+    // Update active mobile tab panel
+    csRenderTab(CS_MOBILE_TAB);
+    // Update tab badges
+    const qBadge=CS.queue.length?` (${CS.queue.length})`:'';
+    const bBadge=CS.bench.length?` (${CS.bench.length})`:'';
+    const uBadge=CS.unassigned.length?` (${CS.unassigned.length})`:'';
+    if(fd('cs-tab-queue'))fd('cs-tab-queue').textContent='📋 排隊'+qBadge;
+    if(fd('cs-tab-bench'))fd('cs-tab-bench').textContent='🪑 候場'+bBadge;
+    if(fd('cs-tab-unassigned'))fd('cs-tab-unassigned').textContent='👥 未分配'+uBadge;
+  }else{
+    csRenderSidebar();
+  }
+}
 
 function csPlayerCardHtml(p,team,pi,ci){
   const st=p&&CS.playerStats[p.id];const pts=st?st.points:0;const wr=st&&st.matchCount>0?Math.round(st.wins/st.matchCount*100)+'%':'—';
@@ -4373,10 +4452,11 @@ function csPlayerCardHtml(p,team,pi,ci){
 
 function csRenderMain(){
   const main=fd('court-main');if(!main)return;
+  const isMob=isMobile();
   const playing=CS.courts.reduce((a,c)=>a+[...c.teamA,...c.teamB].filter(p=>p).length,0);
-  const queuing=CS.queue.reduce((a,q)=>a+q.group.length,0);
-  let html=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
-    ${[['場上',playing,'var(--success)'],['排隊',queuing,'var(--primary)'],['休息',CS.bench.length,'var(--warn)'],['未分配',CS.unassigned.length,'var(--text)'],['已賽',CS.matchLog.length,'var(--danger)']].map(([l,v,c])=>`<div style="background:var(--white);border:1px solid var(--border);border-radius:9px;padding:7px 12px;text-align:center;min-width:54px"><div style="font-size:1.2rem;font-weight:900;color:${c}">${v}</div><div style="font-size:.61rem;color:var(--text2);font-weight:700;text-transform:uppercase">${l}</div></div>`).join('')}
+  const queuing=CS.queue.reduce((a,q)=>a+q.group.filter(p=>p).length,0);
+  let html=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+    ${[['場上',playing,'var(--success)'],['排隊',queuing,'var(--primary)'],['休息',CS.bench.length,'var(--warn)'],['未分配',CS.unassigned.length,'var(--text)'],['已賽',CS.matchLog.length,'var(--danger)']].map(([l,v,c])=>`<div style="background:var(--white);border:1px solid var(--border);border-radius:9px;padding:6px 10px;text-align:center;flex:1;min-width:44px"><div style="font-size:1.1rem;font-weight:900;color:${c};font-family:'Space Mono',monospace">${v}</div><div style="font-size:.59rem;color:var(--text2);font-weight:700;text-transform:uppercase">${l}</div></div>`).join('')}
   </div>`;
   html+=CS.courts.map((c,ci)=>{
     const filled=[...c.teamA,...c.teamB].filter(p=>p).length;
@@ -4403,11 +4483,11 @@ function csRenderMain(){
             ${c.teamB.map((p,pi)=>csPlayerCardHtml(p,'b',pi,ci)).join('')}
           </div>
         </div>
-        <div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--bg2)">
-          <button class="btn btn-s btn-sm" onclick="csClearCourt(${ci})">清空</button>
-          <button class="btn btn-s btn-sm" onclick="csSwapTeams(${ci})">⇄換隊</button>
-          <button class="btn btn-w btn-sm" onclick="csOpenScore(${ci})">📝 比分</button>
-          <button class="btn btn-accent btn-sm" onclick="csDoneQuick(${ci})">✓ 打完</button>
+        <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--bg2)">
+          <button class="btn btn-s btn-sm" onclick="csClearCourt(${ci})" style="font-size:.72rem">清空</button>
+          <button class="btn btn-s btn-sm" onclick="csSwapTeams(${ci})" style="font-size:.72rem">⇄換隊</button>
+          <button class="btn btn-w btn-sm" onclick="csOpenScore(${ci})" style="font-size:.72rem">📝 比分</button>
+          <button class="btn btn-accent btn-sm" onclick="csDoneQuick(${ci})" style="font-size:.72rem">✓ 打完</button>
         </div>
       </div>
     </div>`;
@@ -4464,24 +4544,77 @@ function csRenderMain(){
   main.innerHTML=html;
 }
 
-function csRenderSidebar(){
-  const sb=fd('court-sidebar');if(!sb)return;
-  const spHtml=(p,i,src)=>`<div draggable="true" ondragstart="csOnDragStart(event,{type:'${src}',idx:${i}})" style="background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:5px 8px;display:flex;align-items:center;gap:6px;cursor:grab">
-    <div style="width:24px;height:24px;border-radius:50%;background:${p.color};display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:800;color:#fff;flex-shrink:0">${p.initials}</div>
-    <div style="flex:1;min-width:0"><div style="font-size:.78rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div><div style="font-size:.65rem;color:var(--text2)">${CS_LEVEL_LABELS[p.level]||'—'}</div></div>
-    <div style="display:flex;gap:2px;flex-direction:column;align-items:flex-end">
-      ${src==='bench'?(p.resting>0?`<span style="font-size:.58rem;padding:1px 5px;border-radius:999px;background:#FFF3CD;border:1px solid #FFE08A;color:#7A4A00;font-weight:700">休${p.resting}</span>`:`<span style="font-size:.58rem;padding:1px 5px;border-radius:999px;background:#E6F9EA;border:1px solid #B8EBC3;color:#1a6b2a;font-weight:700">就緒</span>`):''}
-      ${src==='bench'?`<button class="btn btn-s btn-sm" style="font-size:.62rem;padding:2px 6px" onclick="csMoveToQueue(${i},'bench')">排隊</button>`:`<div style="display:flex;gap:2px"><button class="btn btn-s btn-sm" style="font-size:.62rem;padding:2px 6px" onclick="csMoveToQueue(${i},'unassigned')">排隊</button><button class="btn btn-s btn-sm" style="font-size:.62rem;padding:2px 5px" onclick="csMoveToBench(${i})">候</button></div>`}
+function csBuildBenchHtml(){
+  const spHtml=(p,i)=>`<div draggable="true" ondragstart="csOnDragStart(event,{type:'bench',idx:${i}})" style="background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:6px 9px;display:flex;align-items:center;gap:7px;cursor:grab;margin-bottom:5px">
+    <div style="width:28px;height:28px;border-radius:50%;background:${p.color};display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;flex-shrink:0">${p.initials}</div>
+    <div style="flex:1;min-width:0"><div style="font-size:.83rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div><div style="font-size:.68rem;color:var(--text2)">${CS_LEVEL_LABELS[parseInt(p.level)]||'—'}</div></div>
+    <div style="display:flex;gap:3px;flex-direction:column;align-items:flex-end">
+      ${p.resting>0?`<span style="font-size:.62rem;padding:1px 6px;border-radius:999px;background:#FFF3CD;border:1px solid #FFE08A;color:#7A4A00;font-weight:700">休${p.resting}</span>`:`<span style="font-size:.62rem;padding:1px 6px;border-radius:999px;background:#E6F9EA;border:1px solid #B8EBC3;color:#1a6b2a;font-weight:700">就緒</span>`}
+      <button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 7px" onclick="csMoveToQueue(${i},'bench')">排隊</button>
     </div>
   </div>`;
+  if(!CS.bench.length)return'<div style="padding:16px;text-align:center;color:var(--text3);font-size:.8rem">無候場人員</div>';
+  return`<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-s btn-sm" onclick="courtShowAddBench()">+ 加入候場</button></div>`+CS.bench.map((p,i)=>spHtml(p,i)).join('');
+}
+
+function csBuildUnassignedHtml(){
+  const spHtml=(p,i)=>`<div draggable="true" ondragstart="csOnDragStart(event,{type:'unassigned',idx:${i}})" style="background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:6px 9px;display:flex;align-items:center;gap:7px;cursor:grab;margin-bottom:5px">
+    <div style="width:28px;height:28px;border-radius:50%;background:${p.color};display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;flex-shrink:0">${p.initials}</div>
+    <div style="flex:1;min-width:0"><div style="font-size:.83rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}${p.isCombo?'<span style="font-size:.62rem;margin-left:4px;padding:1px 4px;border-radius:999px;background:#E8F5E9;border:1px solid #C8E6C9;color:#2E7D32;font-weight:700">C</span>':''}</div><div style="font-size:.68rem;color:var(--text2)">${CS_LEVEL_LABELS[parseInt(p.level)]||'—'}</div></div>
+    <div style="display:flex;gap:3px">
+      <button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 7px" onclick="csMoveToQueue(${i},'unassigned')">排隊</button>
+      <button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csMoveToBench(${i})">候</button>
+    </div>
+  </div>`;
+  if(!CS.unassigned.length)return'<div style="padding:16px;text-align:center;color:var(--text3);font-size:.8rem">所有球員已分配</div>';
+  return CS.unassigned.map((p,i)=>spHtml(p,i)).join('');
+}
+
+function csBuildQueueHtml(){
+  if(!CS.queue.length)return'<div style="padding:20px;text-align:center;color:var(--text3);font-size:.8rem">目前無排隊人員</div>';
+  return CS.queue.map((q,qi)=>{
+    const slots=[0,1,2,3].map(si=>{
+      const p=q.group[si];const isA=si<2;
+      const tc=isA?'#1a5a8e':'#8e1a1a';const tb=isA?'#EAF4FF':'#FFF0F0';const tbd=isA?'#BBDAFF':'#FFBBBB';
+      const label=(isA?'A':'B')+(si%2===0?'前':'後');
+      if(p){return`<div style="border:2px solid ${tbd};background:${tb};border-radius:8px;padding:5px 6px;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative">
+        <div style="font-size:.58rem;font-weight:700;color:#aaa;letter-spacing:.3px">${label}</div>
+        <div style="font-size:.78rem;font-weight:800;color:${tc};max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+        <div style="font-size:.62rem;padding:1px 4px;border-radius:999px;background:${tb};border:1px solid ${tbd};color:${tc};font-weight:700;margin-top:1px">${CS_LEVEL_LABELS[parseInt(p.level)]||'—'}</div>
+        <button onclick="csRemoveFromQueue(${qi},${si})" style="position:absolute;top:2px;right:3px;background:none;border:none;cursor:pointer;font-size:.62rem;color:#ccc;padding:0;line-height:1">✕</button>
+      </div>`;}
+      return`<div ondragover="csOnDragOver(event)" ondragleave="csOnDragLeave(event)" ondrop="csOnDropQueueSlot(event,${qi},${si})" style="border:2px dashed ${tbd};border-radius:8px;padding:5px 6px;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg)">
+        <div style="font-size:.58rem;color:#ccc;letter-spacing:.3px">${label}</div>
+        <div style="font-size:.68rem;color:#ccc;margin-top:1px">空</div>
+      </div>`;
+    });
+    return`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden">
+      <div style="padding:8px 12px;background:linear-gradient(135deg,#FFF5EE,#FFE8D8);display:flex;align-items:center;gap:6px">
+        <span style="font-family:'Space Mono',monospace;font-size:.8rem;font-weight:700;color:var(--primary)">#${qi+1}</span>
+        <div style="display:flex;gap:3px;margin-left:auto">
+          ${qi>0?`<button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csMoveQueueUp(${qi})">↑</button>`:''}
+          ${qi<CS.queue.length-1?`<button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csMoveQueueDown(${qi})">↓</button>`:''}
+          <button class="btn btn-ok btn-sm" style="font-size:.65rem;padding:2px 8px" onclick="csPromoteQueue(${qi})">↑上場</button>
+          <button class="btn btn-d btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csRemoveQueue(${qi})">✕</button>
+        </div>
+      </div>
+      <div style="padding:8px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px">${slots.join('')}</div>
+    </div>`;
+  }).join('')+`<div style="text-align:right;margin-top:4px"><button class="btn btn-s btn-sm" onclick="csAddEmptyQueue()">+ 新增空組</button></div>`;
+}
+
+function csRenderSidebar(){
+  const sb=fd('court-sidebar');if(!sb)return;
   sb.innerHTML=`<div>
-    <div style="font-size:.75rem;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center"><span>候場人員</span><button class="btn btn-s btn-sm" onclick="courtShowAddBench()" style="font-size:.62rem">+</button></div>
-    <div style="display:flex;flex-direction:column;gap:4px">${CS.bench.length?CS.bench.map((p,i)=>spHtml(p,i,'bench')).join(''):'<div style="padding:8px;text-align:center;color:var(--text3);font-size:.75rem">無</div>'}</div>
+    <div style="font-size:.78rem;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center">
+      <span>候場人員</span><button class="btn btn-s btn-sm" onclick="courtShowAddBench()" style="font-size:.64rem">+</button>
+    </div>
+    ${csBuildBenchHtml()}
   </div>
   <hr style="border:none;border-top:1px solid var(--border)">
   <div>
-    <div style="font-size:.75rem;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">未分配球員</div>
-    <div style="display:flex;flex-direction:column;gap:4px">${CS.unassigned.length?CS.unassigned.map((p,i)=>spHtml(p,i,'unassigned')).join(''):'<div style="padding:8px;text-align:center;color:var(--text3);font-size:.75rem">所有球員已分配</div>'}</div>
+    <div style="font-size:.78rem;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">未分配球員</div>
+    ${csBuildUnassignedHtml()}
   </div>`;
 }
 
@@ -4569,9 +4702,13 @@ function csOpenScore(ci){
   const c=CS.courts[ci];const all=[...c.teamA,...c.teamB].filter(p=>p);if(all.length<2){toast('場上人員不足','err');return;}
   const sA=csTeamSum(c.teamA),sB=csTeamSum(c.teamB);const handi=csHandicap(c.teamA,c.teamB);
   const nA=c.teamA.filter(p=>p).map(p=>p.name).join('、')||'空',nB=c.teamB.filter(p=>p).map(p=>p.name).join('、')||'空';
-  const handiDesc=handi===0?'等級相當，無讓分':handi>0?`A隊(${sA}級)應讓 B隊(${sB}級) <strong>${handi}分</strong>`:`B隊(${sB}級)應讓 A隊(${sA}級) <strong>${Math.abs(handi)}分</strong>`;
+  const handiDesc=handi===0?'等級相當，無讓分':handi>0?`A隊(${sA}級)應讓 B隊(${sB}級) <strong>${handi}分</strong>，A贏超過讓分值 → 額外+1分，B爆冷贏 → B額外+2分`:`B隊(${sB}級)應讓 A隊(${sA}級) <strong>${Math.abs(handi)}分</strong>，B贏超過讓分值 → 額外+1分，A爆冷贏 → A額外+2分`;
   csModal(`<div style="font-size:1rem;font-weight:800;margin-bottom:14px">📝 ${c.name} — 輸入比分</div>
-    <div style="background:#EAF4FF;border:1px solid #BBDAFF;border-left:3px solid #4A9EDE;border-radius:8px;padding:8px 11px;font-size:.78rem;margin-bottom:11px"><strong>讓分說明：</strong>${handiDesc}</div>
+    <div style="background:#EAF4FF;border:1px solid #BBDAFF;border-left:3px solid #4A9EDE;border-radius:8px;padding:8px 11px;font-size:.78rem;margin-bottom:6px"><strong>讓分說明：</strong>${handiDesc}</div>
+    <div style="background:var(--bg2);border-radius:8px;padding:7px 11px;font-size:.75rem;color:var(--text2);margin-bottom:11px;line-height:1.7">
+      📌 積分規則：<strong>輸 1pt</strong> · <strong>平 1pt</strong> · <strong>贏 3pts</strong><br>
+      贏超過讓分值 → <strong style="color:var(--primary)">+1pt</strong>（共4pts）　爆冷獲勝 → <strong style="color:var(--primary)">+2pts</strong>（共5pts）
+    </div>
     <div style="display:grid;grid-template-columns:1fr 50px auto 50px 1fr;align-items:center;gap:7px;margin:10px 0">
       <div style="text-align:center;font-size:.8rem;font-weight:800;color:#1a5a8e">🔵 A隊<br><span style="font-size:.68rem;font-weight:500">${nA}</span></div>
       <input id="cs-sa" type="number" value="21" min="0" max="99" style="text-align:center;font-size:1.2rem;font-weight:900;border:2px solid #BBDAFF;border-radius:8px;padding:5px;width:50px;font-family:'Space Mono',monospace;outline:none" oninput="csScorePreview(${ci})">
@@ -4596,7 +4733,9 @@ function csScorePreview(ci){
   if(nr){prev.textContent='（不計入積分）';return;}
   const c=CS.courts[ci];const res=csCalcPoints(sa,sb,c.teamA,c.teamB,false);
   const w=sa>sb?'🔵 A隊勝':sb>sa?'🔴 B隊勝':'平手';
-  prev.innerHTML=`${w} ｜ A隊 +${res.pA}pts ｜ B隊 +${res.pB}pts`;
+  const bonusA=res.pA>3?` <span style="color:var(--primary);font-weight:800">(含+${res.pA-3}加成)</span>`:'';
+  const bonusB=res.pB>3?` <span style="color:var(--primary);font-weight:800">(含+${res.pB-3}加成)</span>`:'';
+  prev.innerHTML=`${w} ｜ A隊 <strong>${res.pA}</strong>pt${bonusA} ｜ B隊 <strong>${res.pB}</strong>pt${bonusB}`;
 }
 async function csSubmitScore(ci){
   const sa=parseInt(fd('cs-sa')?.value)||0,sb=parseInt(fd('cs-sb')?.value)||0;
@@ -4802,29 +4941,65 @@ function courtShowLeaderboard(){
 
 <!-- COURT ARRANGEMENT OVERLAY (full screen, same page) -->
 <div id="court-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:var(--bg);flex-direction:column;overflow:hidden">
-  <div style="background:var(--white);border-bottom:1px solid var(--border);padding:0 16px;height:54px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-    <div>
-      <div style="font-size:.95rem;font-weight:800;color:var(--primary)">🏸 排場系統</div>
-      <div id="court-subtitle" style="font-size:.73rem;color:var(--text2)"></div>
+
+  <!-- Top bar -->
+  <div id="cs-topbar" style="background:var(--white);border-bottom:1px solid var(--border);padding:0 12px;height:50px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+    <div style="min-width:0;overflow:hidden">
+      <div style="font-size:.88rem;font-weight:800;color:var(--primary);white-space:nowrap">🏸 排場系統</div>
+      <div id="court-subtitle" style="font-size:.66rem;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px"></div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <!-- Desktop action buttons (hidden on mobile) -->
+    <div class="cs-desktop-actions" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-s btn-sm" onclick="courtShowSlotFilter()">⏱ 時段</button>
       <button class="btn btn-s btn-sm" onclick="courtShowBindings()">🔗 綁定</button>
       <button class="btn btn-s btn-sm" onclick="courtShowMatchLog()">📊 記錄</button>
       <button class="btn btn-s btn-sm" onclick="courtShowLeaderboard()">🏆 積分</button>
       <button class="btn btn-accent btn-sm" onclick="courtAutoArrange()">⚡ 自動排場</button>
-      <button class="btn btn-d btn-sm" onclick="closeCourtOverlay()">✕ 關閉</button>
+      <button class="btn btn-d btn-sm" onclick="closeCourtOverlay()">✕</button>
+    </div>
+    <!-- Mobile action buttons -->
+    <div class="cs-mobile-actions" style="display:none;gap:5px;align-items:center">
+      <button class="btn btn-accent btn-sm" style="padding:5px 10px" onclick="courtAutoArrange()">⚡</button>
+      <button class="btn btn-s btn-sm" style="padding:5px 10px" onclick="csShowMobileMenu()">⋯</button>
+      <button class="btn btn-d btn-sm" style="padding:5px 10px" onclick="closeCourtOverlay()">✕</button>
     </div>
   </div>
-  <div style="display:flex;flex:1;overflow:hidden">
+
+  <!-- Mobile tab bar -->
+  <div id="cs-tab-bar" style="display:none;background:var(--white);border-bottom:2px solid var(--border);flex-shrink:0">
+    <div style="display:flex">
+      <button class="cs-tab act" id="cs-tab-courts" onclick="csSwitchTab('courts',this)" style="flex:1;padding:9px 4px;background:none;border:none;font-family:inherit;font-size:.78rem;font-weight:700;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s">🏸 球場</button>
+      <button class="cs-tab" id="cs-tab-queue" onclick="csSwitchTab('queue',this)" style="flex:1;padding:9px 4px;background:none;border:none;font-family:inherit;font-size:.78rem;font-weight:700;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s">📋 排隊</button>
+      <button class="cs-tab" id="cs-tab-bench" onclick="csSwitchTab('bench',this)" style="flex:1;padding:9px 4px;background:none;border:none;font-family:inherit;font-size:.78rem;font-weight:700;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s">🪑 候場</button>
+      <button class="cs-tab" id="cs-tab-unassigned" onclick="csSwitchTab('unassigned',this)" style="flex:1;padding:9px 4px;background:none;border:none;font-family:inherit;font-size:.78rem;font-weight:700;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s">👥 未分配</button>
+    </div>
+  </div>
+
+  <!-- Desktop: side-by-side; Mobile: tabbed panels -->
+  <div id="cs-layout" style="display:flex;flex:1;overflow:hidden">
     <div id="court-main" style="flex:1;overflow-y:auto;padding:14px"></div>
     <div id="court-sidebar" style="width:300px;min-width:180px;background:var(--white);border-left:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;flex-shrink:0"></div>
   </div>
-  <!-- Court-specific modal (z-index above overlay) -->
-  <div id="cs-modal-overlay" onclick="if(event.target===this)csCloseModal()" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);z-index:9100;align-items:center;justify-content:center;padding:20px">
-    <div id="cs-modal-box" style="background:var(--white);border-radius:18px;padding:22px;width:100%;max-width:500px;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.2);animation:mIn .2s ease"></div>
+
+  <!-- Mobile panels (hidden on desktop) -->
+  <div id="cs-mobile-queue" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
+  <div id="cs-mobile-bench" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
+  <div id="cs-mobile-unassigned" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
+
+  <!-- Court modal (z-index above overlay) -->
+  <div id="cs-modal-overlay" onclick="if(event.target===this)csCloseModal()" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);z-index:9100;align-items:center;justify-content:center;padding:16px">
+    <div id="cs-modal-box" style="background:var(--white);border-radius:18px;padding:20px;width:100%;max-width:500px;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.2);animation:mIn .2s ease"></div>
   </div>
 </div>
+<style>
+@media(max-width:640px){
+  .cs-desktop-actions{display:none!important}
+  .cs-mobile-actions{display:flex!important}
+  #cs-tab-bar{display:block!important}
+  #cs-layout{display:none!important}
+  .cs-tab.act{color:var(--primary)!important;border-bottom-color:var(--primary)!important}
+}
+</style>
 
 
 </body>
