@@ -2050,7 +2050,6 @@ async function loadPub(){
       const snap=await db.collection('sessions').orderBy('date','asc').get();
       sessions=[];snap.forEach(d=>{const data=d.data();if(data.status!=='hidden'&&data.date>=todayStr)sessions.push({id:d.id,...data});});
     }
-    // Filter out expired sessions
     sessions=sessions.filter(s=>!isAutoEnded(s));
     sesCache=sessions;
     const wk=currentLang==='en'?'welcomeEn':'welcomeZh';
@@ -2529,7 +2528,21 @@ async function loadAdmSes(){
     if(useLocal){sessions=LOCAL.getAll('sessions').sort((a,b)=>b.date.localeCompare(a.date));}
     else{const snap=await db.collection('sessions').orderBy('date','desc').get();sessions=[];snap.forEach(d=>sessions.push({id:d.id,...d.data()}));}
     sesCache=sessions;
-    const sel=fd('sel-ses');sel.innerHTML='<option value="">請選擇場次</option>'+sessions.map(s=>'<option value="'+s.id+'">'+fmtDate(s.date,'zh')+'  —  '+(s.name||'')+'</option>').join('');
+    const sel=fd('sel-ses');
+    const ongoing=sessions.filter(s=>!isAutoEnded(s));
+    const historical=sessions.filter(s=>isAutoEnded(s));
+    let selHtml='<option value="">請選擇場次</option>';
+    if(ongoing.length){
+      selHtml+=`<optgroup label="── 進行中場次 ──">`;
+      selHtml+=ongoing.map(s=>`<option value="${s.id}">${fmtDate(s.date,'zh')}  —  ${s.name||''}</option>`).join('');
+      selHtml+=`</optgroup>`;
+    }
+    if(historical.length){
+      selHtml+=`<optgroup label="── 歷史場次 ──">`;
+      selHtml+=historical.map(s=>`<option value="${s.id}">${fmtDate(s.date,'zh')}  —  ${s.name||''}</option>`).join('');
+      selHtml+=`</optgroup>`;
+    }
+    sel.innerHTML=selHtml;
     const filtered=sessions.filter(s=>{const ended=isAutoEnded(s);if(currentSesFilter==='ongoing')return!ended;if(currentSesFilter==='ended')return ended;return true;});
     if(!filtered.length){c.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text2)">此篩選條件下無場次</div>';return;}
     const canSes=canEdit('sessions');
@@ -4318,11 +4331,11 @@ async function openCourtArrangement(sid,slotId='all'){
   const slotLabel=slot?(slot.name+(slot.startTime?' ('+slot.startTime+'–'+slot.endTime+')':'')):'';
   fd('court-subtitle').textContent=(s.name||s.date)+(slotLabel?' · '+slotLabel:'');
   const overlay=fd('court-overlay');overlay.style.display='flex';document.body.style.overflow='hidden';
-  // Mobile: show first tab (courts) by default
+  // Mobile: show courts tab by default
   if(isMobile()){
     CS_MOBILE_TAB='courts';
-    const mainEl=fd('court-main');if(mainEl)mainEl.style.display='block';
-    ['cs-mobile-queue','cs-mobile-bench','cs-mobile-unassigned'].forEach(id=>{const el=fd(id);if(el)el.style.display='none';});
+    CS_ALL_MOBILE_PANELS.forEach(id=>{const el=fd(id);if(el)el.style.display='none';});
+    const courtPanel=fd('cs-mobile-courts');if(courtPanel)courtPanel.style.display='block';
     document.querySelectorAll('.cs-tab').forEach(t=>t.classList.remove('act'));
     const firstTab=fd('cs-tab-courts');if(firstTab)firstTab.classList.add('act');
   }
@@ -4385,27 +4398,98 @@ function csCalcPoints(sA,sB,tA,tB,noRecord){
 }
 
 let CS_MOBILE_TAB='courts';
+const CS_ALL_MOBILE_PANELS=['cs-mobile-courts','cs-mobile-queue','cs-mobile-bench','cs-mobile-unassigned'];
+
 function csSwitchTab(tab,btn){
   CS_MOBILE_TAB=tab;
+  // Update tab active state
   document.querySelectorAll('.cs-tab').forEach(t=>t.classList.remove('act'));
   if(btn)btn.classList.add('act');
   else{const el=fd('cs-tab-'+tab);if(el)el.classList.add('act');}
-  const main=fd('court-main');
-  ['cs-mobile-queue','cs-mobile-bench','cs-mobile-unassigned'].forEach(id=>{const el=fd(id);if(el)el.style.display='none';});
+  // Hide all mobile panels
+  CS_ALL_MOBILE_PANELS.forEach(id=>{const el=fd(id);if(el)el.style.display='none';});
+  // Show the active panel
+  const panel=fd('cs-mobile-'+tab);
+  if(panel)panel.style.display='block';
+  csRenderTab(tab);
+}
+
+function csRenderTab(tab){
   if(tab==='courts'){
-    if(main)main.style.display='block';
-    csRenderMain(); // always re-render when switching to courts
-  }else{
-    if(main)main.style.display='none';
-    const panel=fd('cs-mobile-'+tab);if(panel)panel.style.display='block';
-    csRenderTab(tab);
+    const el=fd('cs-mobile-courts');
+    if(el)el.innerHTML=csBuildCourtsHtml();
+  }else if(tab==='queue'){
+    const el=fd('cs-mobile-queue');
+    if(el)el.innerHTML=csBuildQueueHtml();
+  }else if(tab==='bench'){
+    const el=fd('cs-mobile-bench');
+    if(el)el.innerHTML=csBuildBenchHtml();
+  }else if(tab==='unassigned'){
+    const el=fd('cs-mobile-unassigned');
+    if(el)el.innerHTML=csBuildUnassignedHtml();
   }
 }
-function csRenderTab(tab){
-  if(tab==='courts'){csRenderMain();return;}
-  if(tab==='queue'){const el=fd('cs-mobile-queue');if(el)el.innerHTML=csBuildQueueHtml();}
-  else if(tab==='bench'){const el=fd('cs-mobile-bench');if(el)el.innerHTML=csBuildBenchHtml();}
-  else if(tab==='unassigned'){const el=fd('cs-mobile-unassigned');if(el)el.innerHTML=csBuildUnassignedHtml();}
+
+// Build courts HTML for mobile panel (same logic as csRenderMain but returns string)
+function csBuildCourtsHtml(){
+  const playing=CS.courts.reduce((a,c)=>a+[...c.teamA,...c.teamB].filter(p=>p).length,0);
+  const queuing=CS.queue.reduce((a,q)=>a+q.group.filter(p=>p).length,0);
+  let html=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+    ${[['場上',playing,'var(--success)'],['排隊',queuing,'var(--primary)'],['休息',CS.bench.length,'var(--warn)'],['未分配',CS.unassigned.length,'var(--text)'],['已賽',CS.matchLog.length,'var(--danger)']].map(([l,v,c])=>`<div style="background:var(--white);border:1px solid var(--border);border-radius:9px;padding:6px 10px;text-align:center;flex:1;min-width:44px"><div style="font-size:1.1rem;font-weight:900;color:${c};font-family:'Space Mono',monospace">${v}</div><div style="font-size:.59rem;color:var(--text2);font-weight:700;text-transform:uppercase">${l}</div></div>`).join('')}
+  </div>`;
+  html+=CS.courts.map((c,ci)=>{
+    const filled=[...c.teamA,...c.teamB].filter(p=>p).length;
+    const sA=csTeamSum(c.teamA),sB=csTeamSum(c.teamB);const handi=csHandicap(c.teamA,c.teamB);
+    const handiHtml=filled===4?`<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 7px;background:var(--bg2);border-radius:6px;margin-bottom:6px;font-size:.74rem"><span style="font-weight:800;color:#1a5a8e">🔵A ${sA}級</span><span style="color:#ccc;font-size:.68rem">VS</span><span style="font-weight:800;color:#8e1a1a">🔴B ${sB}級</span><span style="font-size:.69rem;font-weight:700;padding:2px 7px;border-radius:999px;${handi===0?'background:var(--bg3);color:var(--text2)':handi>0?'background:#DAEEFF;color:#1a5a8e':'background:#FFE5E5;color:#8e1a1a'}">${handi===0?'等級相當':handi>0?'A讓'+handi+'分':'B讓'+Math.abs(handi)+'分'}</span></div>`:'';
+    return`<div style="background:var(--white);border:2px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:11px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div style="background:linear-gradient(135deg,#3d8e40,#2d6e30);color:#fff;padding:8px 13px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-weight:800;font-size:.88rem">🏸 ${c.name}</span>
+        <span style="font-size:.69rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3)">${filled===4?'4/4 ✓':filled+'/4'}</span>
+      </div>
+      <div style="padding:10px 11px">
+        ${handiHtml}
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:start;margin-bottom:7px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="text-align:center;font-size:.65rem;font-weight:800;color:#1a5a8e;padding:2px;background:#EAF4FF;border-radius:4px">🔵 A 隊</div>
+            ${c.teamA.map((p,pi)=>csPlayerCardHtml(p,'a',pi,ci)).join('')}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--text3);font-size:.82rem;padding:0 2px;padding-top:18px">VS</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="text-align:center;font-size:.65rem;font-weight:800;color:#8e1a1a;padding:2px;background:#FFF0F0;border-radius:4px">🔴 B 隊</div>
+            ${c.teamB.map((p,pi)=>csPlayerCardHtml(p,'b',pi,ci)).join('')}
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--bg2)">
+          <button class="btn btn-s btn-sm" onclick="csClearCourt(${ci})" style="font-size:.72rem">清空</button>
+          <button class="btn btn-s btn-sm" onclick="csSwapTeams(${ci})" style="font-size:.72rem">⇄換隊</button>
+          <button class="btn btn-w btn-sm" onclick="csOpenScore(${ci})" style="font-size:.72rem">📝 比分</button>
+          <button class="btn btn-accent btn-sm" onclick="csDoneQuick(${ci})" style="font-size:.72rem">✓ 打完</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  return html;
+}
+
+function isMobile(){return window.innerWidth<=640;}
+
+function csRender(){
+  if(isMobile()){
+    // Render the active mobile tab
+    csRenderTab(CS_MOBILE_TAB);
+    // Also keep desktop court-main updated (for when rotating to landscape)
+    csRenderMain();
+    // Update tab badges
+    const qBadge=CS.queue.length?` (${CS.queue.length})`:'';
+    const bBadge=CS.bench.length?` (${CS.bench.length})`:'';
+    const uBadge=CS.unassigned.length?` (${CS.unassigned.length})`:'';
+    if(fd('cs-tab-queue'))fd('cs-tab-queue').textContent='📋 排隊'+qBadge;
+    if(fd('cs-tab-bench'))fd('cs-tab-bench').textContent='🪑 候場'+bBadge;
+    if(fd('cs-tab-unassigned'))fd('cs-tab-unassigned').textContent='👥 未分配'+uBadge;
+  }else{
+    csRenderMain();
+    csRenderSidebar();
+  }
 }
 
 function csAssignToSlot(ci,team,pi){
@@ -4708,21 +4792,27 @@ function csBuildUnassignedHtml(){
 }
 
 function csBuildQueueHtml(){
-  if(!CS.queue.length)return'<div style="padding:20px;text-align:center;color:var(--text3);font-size:.8rem">目前無排隊人員</div>';
+  const mob=isMobile();
+  if(!CS.queue.length)return`<div style="padding:20px;text-align:center;color:var(--text3);font-size:.8rem">目前無排隊人員</div><div style="text-align:right;margin-top:8px"><button class="btn btn-s btn-sm" onclick="csAddEmptyQueue()">+ 新增空組</button></div>`;
   return CS.queue.map((q,qi)=>{
     const slots=[0,1,2,3].map(si=>{
       const p=q.group[si];const isA=si<2;
       const tc=isA?'#1a5a8e':'#8e1a1a';const tb=isA?'#EAF4FF':'#FFF0F0';const tbd=isA?'#BBDAFF':'#FFBBBB';
       const label=(isA?'A':'B')+(si%2===0?'前':'後');
-      if(p){return`<div style="border:2px solid ${tbd};background:${tb};border-radius:8px;padding:5px 6px;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative">
-        <div style="font-size:.58rem;font-weight:700;color:#aaa;letter-spacing:.3px">${label}</div>
-        <div style="font-size:.78rem;font-weight:800;color:${tc};max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
-        <div style="font-size:.62rem;padding:1px 4px;border-radius:999px;background:${tb};border:1px solid ${tbd};color:${tc};font-weight:700;margin-top:1px">${CS_LEVEL_LABELS[parseInt(p.level)]||'—'}</div>
-        <button onclick="csRemoveFromQueue(${qi},${si})" style="position:absolute;top:2px;right:3px;background:none;border:none;cursor:pointer;font-size:.62rem;color:#ccc;padding:0;line-height:1">✕</button>
-      </div>`;}
-      return`<div ondragover="csOnDragOver(event)" ondragleave="csOnDragLeave(event)" ondrop="csOnDropQueueSlot(event,${qi},${si})" style="border:2px dashed ${tbd};border-radius:8px;padding:5px 6px;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg)">
-        <div style="font-size:.58rem;color:#ccc;letter-spacing:.3px">${label}</div>
-        <div style="font-size:.68rem;color:#ccc;margin-top:1px">空</div>
+      if(p){
+        // On mobile: tap to open swap/reassign picker; on desktop: draggable
+        const deskAttrs=!mob?`draggable="true" ondragstart="csOnDragStart(event,{type:'qslot',qi:${qi},si:${si},pid:'${p.id}'})"`:''
+        return`<div ${deskAttrs} onclick="csQueueSlotTap(${qi},${si})" style="border:2px solid ${tbd};background:${tb};border-radius:8px;padding:5px 6px;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;cursor:pointer">
+          <div style="font-size:.58rem;font-weight:700;color:#aaa;letter-spacing:.3px">${label}</div>
+          <div style="font-size:.78rem;font-weight:800;color:${tc};max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+          <div style="font-size:.62rem;padding:1px 4px;border-radius:999px;background:${tb};border:1px solid ${tbd};color:${tc};font-weight:700;margin-top:1px">${CS_LEVEL_LABELS[parseInt(p.level)]||'—'}</div>
+          <button onclick="event.stopPropagation();csRemoveFromQueue(${qi},${si})" style="position:absolute;top:2px;right:3px;background:none;border:none;cursor:pointer;font-size:.62rem;color:#ccc;padding:0;line-height:1">✕</button>
+        </div>`;
+      }
+      const deskDrop=!mob?`ondragover="csOnDragOver(event)" ondragleave="csOnDragLeave(event)" ondrop="csOnDropQueueSlot(event,${qi},${si})"`:''
+      return`<div ${deskDrop} onclick="csQueueSlotTap(${qi},${si})" style="border:2px dashed ${tbd};border-radius:8px;padding:5px 6px;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg);cursor:pointer">
+        <div style="font-size:.58rem;color:#bbb;letter-spacing:.3px">${label}</div>
+        <div style="font-size:1rem;color:var(--primary);margin-top:1px;font-weight:700">＋</div>
       </div>`;
     });
     return`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden">
@@ -4732,13 +4822,95 @@ function csBuildQueueHtml(){
           ${qi>0?`<button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csMoveQueueUp(${qi})">↑</button>`:''}
           ${qi<CS.queue.length-1?`<button class="btn btn-s btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csMoveQueueDown(${qi})">↓</button>`:''}
           <button class="btn btn-ok btn-sm" style="font-size:.65rem;padding:2px 8px" onclick="csPromoteQueue(${qi})">↑上場</button>
-          <button class="btn btn-d btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csRemoveQueue(${qi})">✕</button>
+          <button class="btn btn-d btn-sm" style="font-size:.65rem;padding:2px 6px" onclick="csRemoveQueue(${qi})">✕組</button>
         </div>
       </div>
       <div style="padding:8px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px">${slots.join('')}</div>
     </div>`;
   }).join('')+`<div style="text-align:right;margin-top:4px"><button class="btn btn-s btn-sm" onclick="csAddEmptyQueue()">+ 新增空組</button></div>`;
 }
+
+// Tap a queue slot: show picker to swap/assign
+function csQueueSlotTap(qi,si){
+  const q=CS.queue[qi];if(!q)return;
+  while(q.group.length<4)q.group.push(null);
+  const cur=q.group[si];
+  const isA=si<2;const label=(isA?'A':'B')+(si%2===0?'前':'後');
+
+  // Candidates: other queue slots in this group + unassigned + bench
+  const items=[];
+  // Swap with other slots in same group
+  [0,1,2,3].forEach(oi=>{
+    if(oi===si)return;
+    const op=q.group[oi];if(!op)return;
+    const oIsA=oi<2;const oLabel=(oIsA?'A':'B')+(oi%2===0?'前':'後');
+    items.push({label:`⇄ 與 ${oLabel} (${op.name}) 互換`,type:'swap',oi});
+  });
+  // Cross-group swaps: players in other queue groups
+  CS.queue.forEach((oq,oqi)=>{
+    if(oqi===qi)return;
+    oq.group.forEach((op,osi)=>{
+      if(!op)return;
+      const oIsA=osi<2;const oLabel=(oIsA?'A':'B')+(osi%2===0?'前':'後');
+      items.push({label:`⇄ 排隊#${oqi+1} ${oLabel} (${op.name})`,type:'cross',oqi,osi,op});
+    });
+  });
+  // Players from unassigned
+  CS.unassigned.forEach((p,ui)=>items.push({label:`← 未分配：${p.name} (${CS_LEVEL_LABELS[parseInt(p.level)]||'—'})`,type:'unassigned',ui,p}));
+  // Players from bench
+  CS.bench.forEach((p,bi)=>items.push({label:`← 候場：${p.name}${p.resting>0?' (休'+p.resting+')':''}`,type:'bench',bi,p}));
+  // Court players
+  CS.courts.forEach((c,ci)=>{
+    ['a','b'].forEach(team=>{
+      const arr=team==='a'?c.teamA:c.teamB;
+      arr.forEach((p,pi)=>{
+        if(p)items.push({label:`← 第${ci+1}面 ${team==='a'?'A':'B'}隊 ${pi===0?'前':'後'} (${p.name})`,type:'court',ci,team,pi,p});
+      });
+    });
+  });
+
+  const header=cur?`<div style="font-size:1rem;font-weight:800;margin-bottom:4px">調整位置</div><div style="font-size:.8rem;color:var(--text2);margin-bottom:12px">排隊 #${qi+1} ${label}：<strong>${cur.name}</strong></div>`:
+    `<div style="font-size:1rem;font-weight:800;margin-bottom:4px">指派球員</div><div style="font-size:.8rem;color:var(--text2);margin-bottom:12px">排隊 #${qi+1} ${label}（空位）</div>`;
+
+  const rows=items.map(item=>`<div onclick="csQueueSlotAssign(${qi},${si},${JSON.stringify(item).replace(/\\/g,'\\\\').replace(/"/g,'&quot;')})" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin-bottom:5px;background:var(--bg)">
+    <div style="flex:1;font-size:.83rem;font-weight:600">${item.label}</div>
+    <div style="color:var(--primary);font-size:1rem">→</div>
+  </div>`).join('');
+
+  csModal(`${header}<div style="max-height:60vh;overflow-y:auto">${rows||'<div style="padding:16px;text-align:center;color:var(--text3)">無可調換對象</div>'}</div>
+    ${cur?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><button class="btn btn-d btn-sm" onclick="csRemoveFromQueue(${qi},${si});csCloseModal()">移出此位置</button></div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-ghost" onclick="csCloseModal()">取消</button></div>`);
+}
+
+function csQueueSlotAssign(qi,si,item){
+  const q=CS.queue[qi];if(!q)return;
+  while(q.group.length<4)q.group.push(null);
+  const cur=q.group[si];
+
+  if(item.type==='swap'){
+    // Swap within same group
+    const tmp=q.group[si];q.group[si]=q.group[item.oi];q.group[item.oi]=tmp;
+  }else if(item.type==='cross'){
+    // Swap across groups
+    const oq=CS.queue[item.oqi];while(oq.group.length<4)oq.group.push(null);
+    const tmp=q.group[si];q.group[si]=oq.group[item.osi];oq.group[item.osi]=tmp;
+  }else if(item.type==='unassigned'){
+    const p={...CS.unassigned[item.ui]};CS.unassigned.splice(item.ui,1);
+    q.group[si]=p;if(cur)CS.unassigned.push(cur);
+  }else if(item.type==='bench'){
+    const p={...CS.bench[item.bi]};CS.bench.splice(item.bi,1);
+    q.group[si]=p;if(cur)CS.unassigned.push(cur);
+  }else if(item.type==='court'){
+    const c=CS.courts[item.ci];const arr=item.team==='a'?c.teamA:c.teamB;
+    const p={...arr[item.pi]};arr[item.pi]=cur||null;
+    q.group[si]=p;
+  }
+  // Clean up empty groups
+  CS.queue=CS.queue.filter(q=>q.group.some(x=>x));
+  csCloseModal();csSave();csRender();
+  if(isMobile())csSwitchTab('queue');
+}
+
 
 function csRenderSidebar(){
   const sb=fd('court-sidebar');if(!sb)return;
@@ -4906,7 +5078,18 @@ function csPromoteQueue(qi){
   g.forEach((p,si)=>{if(!p)return;if(si<2){while(ai<2&&target.teamA[ai])ai++;if(ai<2)target.teamA[ai++]=p;else CS.unassigned.push(p);}else{while(bi<2&&target.teamB[bi])bi++;if(bi<2)target.teamB[bi++]=p;else CS.unassigned.push(p);}});
   CS.queue.splice(qi,1);csSave();csRender();toast('排隊 #'+(qi+1)+' 已推上 '+target.name,'ok');
 }
-function csMoveToQueue(idx,src){let p=null;if(src==='bench'){p=CS.bench[idx];CS.bench.splice(idx,1);}else{p=CS.unassigned[idx];CS.unassigned.splice(idx,1);}let q=CS.queue.find(q=>q.group.length<4);if(!q){q={id:'q_'+Date.now(),group:[]};CS.queue.push(q);}q.group.push(p);csSave();csRender();}
+function csMoveToQueue(idx,src){
+  let p=null;
+  if(src==='bench'){p=CS.bench[idx];CS.bench.splice(idx,1);}
+  else{p=CS.unassigned[idx];CS.unassigned.splice(idx,1);}
+  // Find first group with any null slot
+  let target=CS.queue.find(q=>q.group.some(x=>!x)&&q.group.length<=4);
+  if(!target){target={id:'q_'+Date.now(),group:[null,null,null,null]};CS.queue.push(target);}
+  while(target.group.length<4)target.group.push(null);
+  const ei=target.group.findIndex(x=>!x);
+  if(ei>=0)target.group[ei]=p;
+  csSave();csRender();
+}
 function csMoveToBench(idx){const p=CS.unassigned[idx];CS.unassigned.splice(idx,1);CS.bench.push({...p,resting:1});csSave();csRender();}
 
 function courtAutoArrange(){
@@ -5113,13 +5296,14 @@ function courtShowLeaderboard(){
     </div>
   </div>
 
-  <!-- Desktop: side-by-side; Mobile: tabbed panels -->
+  <!-- Desktop: side-by-side layout -->
   <div id="cs-layout" style="display:flex;flex:1;overflow:hidden">
     <div id="court-main" style="flex:1;overflow-y:auto;padding:14px"></div>
     <div id="court-sidebar" style="width:300px;min-width:180px;background:var(--white);border-left:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;flex-shrink:0"></div>
   </div>
 
-  <!-- Mobile panels (hidden on desktop) -->
+  <!-- Mobile panels (each tab renders into its own panel) -->
+  <div id="cs-mobile-courts" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
   <div id="cs-mobile-queue" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
   <div id="cs-mobile-bench" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
   <div id="cs-mobile-unassigned" style="display:none;flex:1;overflow-y:auto;padding:12px"></div>
